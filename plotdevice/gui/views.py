@@ -107,17 +107,10 @@ class GraphicsView(NSView):
         self.key = None
         self.keycode = None
         self._zoom = 1.0
-        self._dpr = self.window().backingScaleFactor()
-        # self.scrollwheel = False
-        # self.wheeldelta = 0.0
+        # Remove _dpr since we're not using backing scale factor for bitmap rendering anymore
+        # self._dpr = self.window().backingScaleFactor()
 
-        # set up layer `hosting' and disable implicit anims
-        self.setLayer_(CALayer.new())
-        self.setWantsLayer_(True)
-        inaction = {k:None for k in ["onOrderOut", "sublayers", "contents", "position", "bounds"]}
-        self.layer().setActions_(inaction)
-
-        # display the placeholder image until we're passed a canvas (and keep it in sync with appearance)
+        # display the placeholder image until we're passed a canvas
         self.updatePlaceholder(NSAppearance.currentDrawingAppearance())
 
         # Enable gesture recognition
@@ -132,7 +125,7 @@ class GraphicsView(NSView):
             ))
             if placeholder:
                 self.setFrameSize_(placeholder.size())
-                self.layer().setContents_(placeholder)
+                self.setNeedsDisplay_(True)  # Trigger a redraw instead of setting layer contents
 
     @objc.python_method
     def setCanvas(self, canvas):
@@ -148,10 +141,6 @@ class GraphicsView(NSView):
         x_pct = NSMidX(visible) / NSWidth(oldframe)
         y_pct = NSMidY(visible) / NSHeight(oldframe)
 
-        # render (and possibly bomb...)
-        ns_image = canvas._render_to_image(self.zoom)
-        bitmap = ns_image.layerContentsForContentsScale_(self._dpr)
-
         # resize
         w, h = [s*self.zoom for s in canvas.pagesize]
         self.setFrameSize_([w, h])
@@ -165,11 +154,11 @@ class GraphicsView(NSView):
             half_h = NSHeight(visible) / 2.0
             self.scrollPoint_( (x_pct*w-half_w, y_pct*h-half_h) )
 
-        # cache the canvas image
-        self.layer().setContents_(bitmap)
-
-        # keep a reference to the canvas so we can zoom later on
+        # keep a reference to the canvas
         self.canvas = canvas
+        
+        # trigger a redraw
+        self.setNeedsDisplay_(True)
 
     def _get_zoom(self):
         return self._zoom
@@ -348,6 +337,47 @@ class GraphicsView(NSView):
 
     def acceptsTouchEvents(self):
         return True
+
+    def drawRect_(self, rect):
+        if self.canvas is None:
+            # Draw placeholder if no canvas
+            if placeholder := NSImage.imageNamed_('placeholder-{mode}.pdf'.format(
+                mode = 'dark' if 'Dark' in NSAppearance.currentDrawingAppearance().name() else 'light'
+            )):
+                placeholder.drawInRect_(self.bounds())
+            return
+
+        # Convert the dirty rect to canvas coordinates
+        viewToCanvas = NSAffineTransform.transform()
+        viewToCanvas.scaleBy_(1.0/self.zoom)
+        canvasRect = viewToCanvas.transformRect_(rect)
+        
+        print(f"Dirty rect (view coords): origin({rect.origin.x:.1f}, {rect.origin.y:.1f}), size({rect.size.width:.1f}, {rect.size.height:.1f})")
+        print(f"Canvas rect (unzoomed): origin({canvasRect.origin.x:.1f}, {canvasRect.origin.y:.1f}), size({canvasRect.size.width:.1f}, {canvasRect.size.height:.1f})")
+        
+        # Set up the graphics state for zoomed drawing
+        NSGraphicsContext.currentContext().saveGraphicsState()
+        
+        # Apply zoom transform
+        transform = NSAffineTransform.transform()
+        transform.scaleBy_(self.zoom)
+        transform.concat()
+        
+        # Set up clipping to the intersection of canvas bounds and visible area
+        canvasBounds = ((0, 0), self.canvas.pagesize)
+        visibleBounds = NSIntersectionRect(canvasRect, canvasBounds)
+        print(f"Clipped bounds: origin({visibleBounds.origin.x:.1f}, {visibleBounds.origin.y:.1f}), size({visibleBounds.size.width:.1f}, {visibleBounds.size.height:.1f})")
+        print(f"Canvas size: {self.canvas.pagesize}")
+        print("---")
+        
+        clip = NSBezierPath.bezierPathWithRect_(visibleBounds)
+        clip.addClip()
+        
+        # Draw the canvas contents
+        self.canvas.draw()
+        
+        # Restore the graphics state
+        NSGraphicsContext.currentContext().restoreGraphicsState()
 
 class FullscreenWindow(NSWindow):
 
