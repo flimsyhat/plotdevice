@@ -350,9 +350,6 @@ class GraphicsView(NSView):
         viewToCanvas.scaleBy_(1.0/self.zoom)
         canvasRect = viewToCanvas.transformRect_(rect)
         
-        print(f"Dirty rect (view coords): origin({rect.origin.x:.1f}, {rect.origin.y:.1f}), size({rect.size.width:.1f}, {rect.size.height:.1f})")
-        print(f"Canvas rect (unzoomed): origin({canvasRect.origin.x:.1f}, {canvasRect.origin.y:.1f}), size({canvasRect.size.width:.1f}, {canvasRect.size.height:.1f})")
-        
         # Set up the graphics state for zoomed drawing
         NSGraphicsContext.currentContext().saveGraphicsState()
         
@@ -364,10 +361,6 @@ class GraphicsView(NSView):
         # Set up clipping to the intersection of canvas bounds and visible area
         canvasBounds = ((0, 0), self.canvas.pagesize)
         visibleBounds = NSIntersectionRect(canvasRect, canvasBounds)
-        print(f"Clipped bounds: origin({visibleBounds.origin.x:.1f}, {visibleBounds.origin.y:.1f}), size({visibleBounds.size.width:.1f}, {visibleBounds.size.height:.1f})")
-        print(f"Canvas size: {self.canvas.pagesize}")
-        print("---")
-        
         clip = NSBezierPath.bezierPathWithRect_(visibleBounds)
         clip.addClip()
         
