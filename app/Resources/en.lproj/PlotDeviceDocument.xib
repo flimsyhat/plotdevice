@@ -134,13 +134,13 @@
             </connections>
             <point key="canvasLocation" x="139" y="144"/>
         </window>
-        <window title="Variables" allowsToolTipsWhenApplicationIsInactive="NO" hidesOnDeactivate="YES" visibleAtLaunch="NO" appearanceType="darkAqua" animationBehavior="default" id="169" userLabel="Panel" customClass="NSPanel">
+        <window title="Variables" allowsToolTipsWhenApplicationIsInactive="NO" hidesOnDeactivate="YES" visibleAtLaunch="NO" animationBehavior="default" id="169" userLabel="Panel" customClass="NSPanel">
             <windowStyleMask key="styleMask" titled="YES" closable="YES" utility="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="395" y="467" width="300" height="97"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
             <value key="minSize" type="size" width="300" height="11"/>
-            <view key="contentView" appearanceType="darkAqua" id="168" customClass="NSVisualEffectView">
+            <view key="contentView" id="168" customClass="NSVisualEffectView">
                 <rect key="frame" x="0.0" y="0.0" width="300" height="97"/>
                 <autoresizingMask key="autoresizingMask"/>
             </view>
