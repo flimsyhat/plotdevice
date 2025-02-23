@@ -58,7 +58,6 @@ class PlotDeviceAppDelegate(NSObject):
             self.updatesMenu.setAction_("checkForUpdates:")
             self.updatesMenu.setHidden_(False)
 
-
     def applicationWillBecomeActive_(self, note):
         # rescan the examples dir every time?
         self.updateExamples()
@@ -119,3 +118,7 @@ class PlotDeviceAppDelegate(NSObject):
     def applicationWillTerminate_(self, note):
         import atexit
         atexit._run_exitfuncs()
+
+    def applicationSupportsSecureRestorableState_(self, sender):
+        """Opt-in to secure coding for restorable state"""
+        return True
