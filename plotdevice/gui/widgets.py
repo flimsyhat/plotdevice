@@ -2,7 +2,6 @@
 import os, re
 from collections import OrderedDict
 from ..lib.cocoa import *
-from Foundation import NSLock
 from math import floor, ceil
 import objc
 
@@ -254,8 +253,6 @@ class DashboardController(NSObject):
         self.panel.contentView().setFlipped_(True)
         self.rows = OrderedDict()
         self.positioned = False
-        self._pending_updates = {}
-        self._last_values = {}  # Track previous values to detect real changes
 
     def shutdown(self):
         self.panel.close()
@@ -265,67 +262,10 @@ class DashboardController(NSObject):
                 row.control.setDelegate_(None)
 
     def setVariable_to_(self, name, val):
-        """Update a variable's value with error handling and state tracking"""
-        try:
-            # Validate the variable exists
-            if name not in self.script.vm.params:
-                NSLog("Variable %s no longer exists", name)
-                return
-
-            var = self.script.vm.params[name]
-            old_val = var.value
-            
-            # Store the previous value and update
-            self._last_values[name] = old_val
-            var.value = val
-            self._pending_updates[name] = val
-
-            # Schedule a UI update
-            self.performSelector_withObject_afterDelay_(
-                "applyPendingUpdates:", None, 0.1
-            )
-
-            # Only run script if value actually changed and not animating
-            if old_val != val and self.script.animationTimer is None:
-                self.script.runScript()
-
-        except Exception as e:
-            NSLog("Failed to update variable %s: %s", name, str(e))
-            self.restoreVariableState_(name)
-
-    @objc.python_method
-    def restoreVariableState_(self, name):
-        """Restore a variable's UI state after an error"""
-        if name in self._last_values:
-            old_val = self._last_values[name]
-            if name in self.rows:
-                row = self.rows[name]
-                if row.type is NUMBER:
-                    row.control.setFloatValue_(old_val)
-                    row.roundOff()
-                elif row.type is TEXT:
-                    row.control.setStringValue_(old_val)
-                elif row.type is BOOLEAN:
-                    row.control.setState_(NSOnState if old_val else NSOffState)
-
-    def applyPendingUpdates_(self, timer):
-        """Apply any pending variable updates to the UI"""
-        updates = self._pending_updates.copy()
-        self._pending_updates.clear()
-
-        for name, val in updates.items():
-            if name in self.rows:
-                try:
-                    row = self.rows[name]
-                    if row.type is NUMBER:
-                        row.control.setFloatValue_(val)
-                        row.roundOff()
-                    elif row.type is TEXT:
-                        row.control.setStringValue_(val)
-                    elif row.type is BOOLEAN:
-                        row.control.setState_(NSOnState if val else NSOffState)
-                except Exception as e:
-                    NSLog("Failed to update UI for %s: %s", name, str(e))
+        var = self.script.vm.params[name]
+        var.value = val
+        if self.script.animationTimer is None:
+            self.script.runScript()
 
     def callHandler_(self, name):
         var = self.script.vm.params[name]
@@ -340,21 +280,12 @@ class DashboardController(NSObject):
 
     @objc.python_method
     def updateInterface(self):
-        """Update the variable panel UI to reflect current script state"""
         params = self.script.vm.params
-        
-        # Handle removed variables
-        for name, widget in list(self.rows.items()):  # Use list() to avoid modification during iteration
+        for name, widget in self.rows.items():
             if name not in params:
                 widget.removeFromSuperview()
-                # Safely remove from namespace if it exists
-                self.script.vm.namespace.pop(name, None)  # None is the default if key doesn't exist
-                
-                # Clean up our tracking dictionaries
-                self._last_values.pop(name, None)
-                self._pending_updates.pop(name, None)
-        
-        # Update existing and add new variables
+                self.script.vm.namespace.pop(name)
+
         new_rows = OrderedDict()
         for name, var in params.items():
             try:
