@@ -5,7 +5,7 @@ from ..lib.cocoa import *
 from math import floor, ceil
 import objc
 from ..gfx.colors import Color
-from ..gfx.atoms import COLOR, NUMBER, TEXT, BOOLEAN, BUTTON
+from ..gfx.atoms import COLOR, NUMBER, TEXT, BOOLEAN, BUTTON, SELECT
 
 ## classes instantiated by PlotDeviceDocument.xib & PlotDeviceScript.xib
 
@@ -166,6 +166,16 @@ class DashboardRow(NSView):
             control.sizeToFit()
             self.addSubview_(control)
 
+        elif var.type is SELECT:
+            control = NSPopUpButton.alloc().init()
+            control.addItemsWithTitles_(var.options)
+            control.selectItemWithTitle_(var.value)
+            control.setTarget_(self)
+            control.setAction_(objc.selector(self.selectChanged_, signature=b"v@:@@"))
+            control.cell().setControlSize_(NSSmallControlSize)
+            control.sizeToFit()
+            self.addSubview_(control)
+
         self.name = var.name
         self.type = var.type
         self.label = label
@@ -226,6 +236,11 @@ class DashboardRow(NSView):
         elif var.type is COLOR:
             control.setColor_(Color(var.value).nsColor)
 
+        elif var.type is SELECT:
+            control.removeAllItems()
+            control.addItemsWithTitles_(var.options)
+            control.selectItemWithTitle_(var.value)
+
     @objc.python_method
     def updateLayout(self, indent, width, row_width, offset):
         self.setFrame_(((0,  offset), (row_width, 30)))
@@ -241,6 +256,8 @@ class DashboardRow(NSView):
             self.control.setFrameOrigin_((indent-5, -5))
         elif self.type is COLOR:
             self.control.setFrame_(((indent, 0), (44, 23)))
+        elif self.type is SELECT:
+            self.control.setFrame_(((indent, 0), (width - indent - 50, 23)))
 
     def numberChanged_(self, sender):
         self.roundOff()
@@ -298,6 +315,10 @@ class DashboardRow(NSView):
                         hex_color = "#000000"
             
             self.delegate.setVariable_to_(self.name, hex_color)
+
+    def selectChanged_(self, sender):
+        if self.delegate:
+            self.delegate.setVariable_to_(self.name, sender.titleOfSelectedItem())
 
 class DashboardController(NSObject):
     script = IBOutlet()

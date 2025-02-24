@@ -13,12 +13,12 @@ from .effects import Effect
 _ctx = None
 __all__ = [
         "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_BACKSPACE", "KEY_TAB", "KEY_ESC",
-        "Variable", "NUMBER", "TEXT", "BOOLEAN", "BUTTON", "COLOR",
+        "Variable", "NUMBER", "TEXT", "BOOLEAN", "BUTTON", "COLOR", "SELECT",
         "Grob",
         ]
 
 # var datatypes
-NUMBER, TEXT, BOOLEAN, BUTTON, COLOR = "number", "text", "boolean", "button", "color"
+NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT = "number", "text", "boolean", "button", "color", "select"
 
 # ui events
 KEY_UP = 126
@@ -456,6 +456,25 @@ class Variable(object):
             clr = kwargs.get('color', None)
             self.color = Color(clr) if clr else None
             
+        elif self.type == SELECT:
+            # Get options list and default value
+            options = next(iter(args), [])
+            if not isinstance(options, (list, tuple)):
+                raise DeviceError("SELECT variable requires a list of options")
+            if not options:
+                raise DeviceError("SELECT variable requires at least one option")
+            self.options = options
+            
+            # Use first option as default value if none specified
+            default_idx = kwargs.get('default', 0)
+            if isinstance(default_idx, int):
+                if not 0 <= default_idx < len(options):
+                    raise DeviceError(f"Default index {default_idx} out of range for options list")
+                self.value = options[default_idx]
+            else:
+                if default_idx not in options:
+                    raise DeviceError(f"Default value '{default_idx}' not found in options list")
+                self.value = default_idx
 
     def inherit(self, old=None):
         if old and old.type is self.type:
