@@ -253,18 +253,64 @@ class DashboardController(NSObject):
         self.panel.contentView().setFlipped_(True)
         self.rows = OrderedDict()
         self.positioned = False
+        
+        # Register for script lifecycle notifications
+        nc = NSNotificationCenter.defaultCenter()
+        self._observers = []
+        self._observers.extend([
+            (nc, nc.addObserver_selector_name_object_(
+                self, "scriptDidReload:", 
+                "ScriptDidReloadNotification", 
+                None
+            ))
+        ])
+
+    def scriptDidReload_(self, notification):
+        """Restore connections after script reload"""
+        self.restoreConnections()
+        self.updateInterface()
+
+    @objc.python_method
+    def restoreConnections(self):
+        """Restore delegate connections for all rows"""
+        for row in self.rows.values():
+            if row and row.control:  # Safety check for valid objects
+                row.delegate = self
+                if row.type is TEXT:
+                    row.control.setDelegate_(row)
 
     def shutdown(self):
-        self.panel.close()
-        for row in self.rows.values():
-            row.delegate = None
-            if row.type is TEXT:
-                row.control.setDelegate_(None)
+        # Clean up notification observers
+        if hasattr(self, '_observers'):
+            nc = NSNotificationCenter.defaultCenter()
+            for observer in self._observers:
+                nc.removeObserver_(observer)
+            self._observers = []
+        
+        # Clean up UI elements
+        if hasattr(self, 'panel'):
+            self.panel.close()
+        
+        if hasattr(self, 'rows'):
+            for row in self.rows.values():
+                if row and row.control:
+                    row.delegate = None
+                    if row.type is TEXT:
+                        row.control.setDelegate_(None)
+            self.rows.clear()
 
     def setVariable_to_(self, name, val):
+        # Add safety check for variable existence
+        if name not in self.script.vm.params:
+            NSLog("Variable %s no longer exists", name)
+            return
+
         var = self.script.vm.params[name]
+        old_val = var.value  # Track old value
         var.value = val
-        if self.script.animationTimer is None:
+        
+        # Only run script if value actually changed and not animating
+        if old_val != val and self.script.animationTimer is None:
             self.script.runScript()
 
     def callHandler_(self, name):
@@ -281,19 +327,23 @@ class DashboardController(NSObject):
     @objc.python_method
     def updateInterface(self):
         params = self.script.vm.params
-        for name, widget in self.rows.items():
+        
+        # Remove old variables
+        for name, widget in list(self.rows.items()):
             if name not in params:
                 widget.removeFromSuperview()
-                self.script.vm.namespace.pop(name)
+                self.script.vm.namespace.pop(name, None)
 
+        # Update existing and add new variables
         new_rows = OrderedDict()
         for name, var in params.items():
-            try:
-                new_rows[name] = self.rows[name]
-                new_rows[name].updateConfig(var)
-            except KeyError:
-                new_rows[name] = DashboardRow.alloc().initWithVariable_forDelegate_(var, self)
-                self.panel.contentView().addSubview_(new_rows[name])
+            row = self.rows.get(name)
+            if row is None:
+                row = DashboardRow.alloc().initWithVariable_forDelegate_(var, self)
+                self.panel.contentView().addSubview_(row)
+            else:
+                row.updateConfig(var)
+            new_rows[name] = row
         self.rows = new_rows
 
         if not self.rows:
