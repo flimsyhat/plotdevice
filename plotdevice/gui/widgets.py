@@ -86,7 +86,6 @@ class DashboardRow(NSView):
     MARGIN_LEFT = 10
     MARGIN_RIGHT = 10
     ROW_HEIGHT = 30
-    LABEL_HEIGHT = 18
     CONTROL_HEIGHT = 23
     LABEL_PADDING = 15  # Space between label and control
 
@@ -253,8 +252,8 @@ class DashboardRow(NSView):
         # Base row frame
         self.setFrame_(((0, offset), (row_width, self.ROW_HEIGHT)))
         
-        # Center label vertically - use actual label height for perfect centering
-        label_height = self.label.frame().size.height  # Get actual height instead of LABEL_HEIGHT
+        # Center label vertically
+        label_height = self.label.frame().size.height
         label_y = (self.ROW_HEIGHT - label_height) / 2
         control_y = (self.ROW_HEIGHT - self.CONTROL_HEIGHT) / 2
         
