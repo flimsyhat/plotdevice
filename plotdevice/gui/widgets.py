@@ -258,10 +258,11 @@ class DashboardRow(NSView):
         label_y = (self.ROW_HEIGHT - label_height) / 2
         control_y = (self.ROW_HEIGHT - self.CONTROL_HEIGHT) / 2
         
-        # Position label with right alignment
-        self.label.setFrame_(((self.MARGIN_LEFT, label_y), 
-                             (indent - self.LABEL_PADDING, label_height)))
-        self.label.setAlignment_(NSRightTextAlignment)  # Ensure right alignment
+        # Position label with right alignment - use label's natural width
+        label_width = self.label_w
+        label_x = indent - label_width
+        self.label.setFrame_(((label_x, label_y), 
+                             (label_width, label_height)))
         
         # Available width for controls
         control_width = width - indent - self.MARGIN_RIGHT
