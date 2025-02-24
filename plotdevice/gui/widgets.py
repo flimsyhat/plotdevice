@@ -346,10 +346,15 @@ class DashboardController(NSObject):
     script = IBOutlet()
     panel = IBOutlet()
 
+    # Layout constants
+    PANEL_PADDING = 30  # Extra space at bottom of panel
+    MIN_CONTROL_WIDTH = 200  # Minimum width for controls
+    MAX_WIDTH_MULTIPLIER = 5  # Maximum panel width multiplier
+    TITLE_BAR_HEIGHT = 38  # Height of window title bar
+
     def awakeFromNib(self):
         self.panel.contentView().setFlipped_(True)
         self.rows = OrderedDict()
-        self.positioned = False
         
         # Register for script lifecycle notifications
         nc = NSNotificationCenter.defaultCenter()
@@ -420,7 +425,6 @@ class DashboardController(NSObject):
             except DeviceError as e:
                 return self.script.crash()
 
-
     @objc.python_method
     def updateInterface(self):
         params = self.script.vm.params
@@ -445,46 +449,64 @@ class DashboardController(NSObject):
 
         if not self.rows:
             self.panel.orderOut_(None)
+            return
+
+        # Set the title of the parameter panel
+        self.panel.setTitle_(self.script.window().title())
+
+        # Calculate panel dimensions using DashboardRow constants
+        label_width = max(row.label_w for row in self.rows.values())
+        button_width = max(row.button_w for row in self.rows.values())
+        number_width = max(row.num_w for row in self.rows.values())
+        
+        # Calculate total heights and widths
+        total_height = (len(self.rows) * DashboardRow.ROW_HEIGHT) + self.PANEL_PADDING
+        control_width = max(button_width, self.MIN_CONTROL_WIDTH)
+        total_width = (
+            label_width + 
+            DashboardRow.LABEL_PADDING + 
+            control_width + 
+            number_width
+        )
+
+        # Set panel constraints
+        self.panel.setMinSize_((total_width, total_height))
+        self.panel.setMaxSize_((total_width * self.MAX_WIDTH_MULTIPLIER, total_height))
+
+        # Get current panel frame and calculate new position
+        current_frame = self.panel.frame()
+        
+        # If panel hasn't been positioned yet (origin is 0,0)
+        if current_frame.origin.x == 0 and current_frame.origin.y == 0:
+            win = self.script.window().frame()
+            screen = self.script.window().screen().visibleFrame()
+            
+            # Try to position to right of window
+            if win.origin.x + win.size.width + total_width < screen.size.width:
+                pOrigin = (win.origin.x + win.size.width, 
+                          win.origin.y + win.size.height - total_height - self.TITLE_BAR_HEIGHT)
+            # Try to position to left of window
+            elif win.origin.x - total_width > 0:
+                pOrigin = (win.origin.x - total_width, 
+                          win.origin.y + win.size.height - total_height - self.TITLE_BAR_HEIGHT)
+            # Fall back to overlapping position
+            else:
+                pOrigin = (win.origin.x + win.size.width - total_width - DashboardRow.MARGIN_RIGHT,
+                          win.origin.y + DashboardRow.MARGIN_LEFT)
         else:
-            # Set the title of the parameter panel to the title of the window
-            self.panel.setTitle_(self.script.window().title())
+            # Keep current position but adjust for height change
+            pOrigin = current_frame.origin
+            pOrigin.y -= total_height - current_frame.size.height
 
-            # recalculate the layout
-            (pOrigin, pSize) = self.panel.frame()
-            label_w = max([v.label_w for v in self.rows.values()])
-            button_w = max([v.button_w for v in self.rows.values()])
-            num_w = max([v.num_w for v in self.rows.values()])
-            ph = len(self.rows) * 30 + 30
-            pw = label_w + 15 + max(button_w, 200) + num_w
-            col = label_w + 15
+        self.panel.setFrame_display_animate_((pOrigin, (total_width, total_height)), True, True)
 
-            self.panel.setMinSize_( (pw, ph))
-            self.panel.setMaxSize_( (pw * 5, ph))
+        # Update row layouts
+        indent = label_width + DashboardRow.LABEL_PADDING
+        for idx, row in enumerate(self.rows.values()):
+            row.updateLayout(indent, total_width - DashboardRow.MARGIN_RIGHT - number_width, 
+                           total_width, idx * DashboardRow.ROW_HEIGHT)
 
-            needs_resize = pSize.width < pw or pSize.height != ph
-            pw = max(pw, pSize.width)
-
-            if not self.positioned:
-                win = self.script.window().frame()
-                screen = self.script.window().screen().visibleFrame()
-                if win.origin.x + win.size.width + pw < screen.size.width:
-                    pOrigin = (win.origin.x + win.size.width, win.origin.y + win.size.height - ph - 38)
-                elif win.origin.x - pw > 0:
-                    pOrigin = (win.origin.x - pw, win.origin.y + win.size.height - ph - 38)
-                else:
-                    pOrigin = (win.origin.x + win.size.width - pw - 15, win.origin.y + 15)
-                self.panel.setFrame_display_animate_( (pOrigin, (pw,ph)), True, True )
-                self.positioned = True
-
-            elif needs_resize:
-                pOrigin.y -= ph-pSize.height
-                self.panel.setFrame_display_animate_( (pOrigin, (pw,ph)), True, True )
-
-            # reposition the elements of each row to fit the new panel size and row contents
-            for idx, v in enumerate(self.rows.values()):
-                v.updateLayout(col, pw - 10 - num_w, pw, idx*30)
-
-            self.panel.orderFront_(None)
+        self.panel.orderFront_(None)
 
 
 
