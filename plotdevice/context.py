@@ -1564,6 +1564,21 @@ class Context(object):
     ### Variables ###
 
     def var(self, name, type, *args, **kwargs):
+        """Create a new variable in the namespace
+        
+        The var() command lets you create UI controls that affect values in your script.
+        The variable's type determines what kind of UI control is created:
+        
+        NUMBER:  a slider with optional min/max/step values
+        TEXT:    a text field 
+        BOOLEAN: a checkbox
+        BUTTON:  a clickable button that calls a function
+        COLOR:   a color well for choosing colors
+        """
+        # Check for conflicts before creating the Variable
+        if hasattr(self, name) and callable(getattr(self, name)):
+            raise DeviceError(f"Cannot create a variable named '{name}' - it would conflict with a built-in function")
+        
         v = Variable(name, type, *args, **kwargs)
         self._vars[v.name] = v
 

@@ -387,18 +387,29 @@ class StyleMixin(Grob):
 
 re_var = re.compile(r'[A-Za-z_][A-Za-z0-9_]*$')
 re_punct = re.compile(r'([^\!\'\#\%\&\'\(\)\*\+\,\-\.\/\:\;\<\=\>\?\@\[\/\]\^\_\{\|\}\~])$')
+
 class Variable(object):
     def __init__(self, name, type, *args, **kwargs):
         if not re_var.match(name):
             raise DeviceError('Not a legal variable name: "%s"' % name)
 
-        # Check if we're trying to override a built-in function
-        if name in ('background', 'fill', 'stroke'):
-            raise DeviceError("Cannot create a variable named '%s' - it would conflict with a built-in function" % name)
-
         self.name = name
         self.type = type or NUMBER
         self.label = re_punct.sub(r'\1:', kwargs.get('label', name))
+
+        if self.type == COLOR:
+            # Get the color value from args or use a default
+            color_str = next(iter(args), None)
+            if color_str is None:
+                # Use a light gray as default instead of black
+                color_str = "#cccccc"
+            try:
+                # Validate by attempting to create a Color object
+                Color(color_str)
+                self.value = color_str
+            except:
+                badcolor = "Invalid color specification for variable '%s': %r"%(name, color_str)
+                raise DeviceError(badcolor)
 
         if self.type == NUMBER:
             attrs = ['value', 'min', 'max', 'step']
@@ -445,19 +456,6 @@ class Variable(object):
             clr = kwargs.get('color', None)
             self.color = Color(clr) if clr else None
             
-        elif self.type == COLOR:
-            # Get the color value from args or use a default
-            color_str = next(iter(args), None)
-            if color_str is None:
-                # Use a light gray as default instead of black
-                color_str = "#cccccc"
-            try:
-                # Validate by attempting to create a Color object
-                Color(color_str)
-                self.value = color_str
-            except:
-                badcolor = "Invalid color specification for variable '%s': %r"%(name, color_str)
-                raise DeviceError(badcolor)
 
     def inherit(self, old=None):
         if old and old.type is self.type:
