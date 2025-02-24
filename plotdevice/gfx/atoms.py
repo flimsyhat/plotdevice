@@ -13,15 +13,12 @@ from .effects import Effect
 _ctx = None
 __all__ = [
         "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_BACKSPACE", "KEY_TAB", "KEY_ESC",
-        "Variable", "NUMBER", "TEXT", "BOOLEAN","BUTTON",
+        "Variable", "NUMBER", "TEXT", "BOOLEAN", "BUTTON", "COLOR",
         "Grob",
         ]
 
 # var datatypes
-NUMBER = 1
-TEXT = 2
-BOOLEAN = 3
-BUTTON = 4
+NUMBER, TEXT, BOOLEAN, BUTTON, COLOR = "number", "text", "boolean", "button", "color"
 
 # ui events
 KEY_UP = 126
@@ -392,12 +389,12 @@ re_var = re.compile(r'[A-Za-z_][A-Za-z0-9_]*$')
 re_punct = re.compile(r'([^\!\'\#\%\&\'\(\)\*\+\,\-\.\/\:\;\<\=\>\?\@\[\/\]\^\_\{\|\}\~])$')
 class Variable(object):
     def __init__(self, name, type, *args, **kwargs):
-        # var(name, TEXT, value, label=)
-        # var(name, BOOLEAN, value, label=)
-        # var(name, NUMBER, value, min, max, step, label=)
-        # var(handler, BUTTON, buttonText, color=, label=)
         if not re_var.match(name):
             raise DeviceError('Not a legal variable name: "%s"' % name)
+
+        # Check if we're trying to override a built-in function
+        if name in ('background', 'fill', 'stroke'):
+            raise DeviceError("Cannot create a variable named '%s' - it would conflict with a built-in function" % name)
 
         self.name = name
         self.type = type or NUMBER
@@ -447,6 +444,20 @@ class Variable(object):
                 self.label = None
             clr = kwargs.get('color', None)
             self.color = Color(clr) if clr else None
+            
+        elif self.type == COLOR:
+            # Get the color value from args or use a default
+            color_str = next(iter(args), None)
+            if color_str is None:
+                # Use a light gray as default instead of black
+                color_str = "#cccccc"
+            try:
+                # Validate by attempting to create a Color object
+                Color(color_str)
+                self.value = color_str
+            except:
+                badcolor = "Invalid color specification for variable '%s': %r"%(name, color_str)
+                raise DeviceError(badcolor)
 
     def inherit(self, old=None):
         if old and old.type is self.type:
@@ -454,6 +465,9 @@ class Variable(object):
                 self.value = max(self.min, min(self.max, old.value))
                 if self.step:
                     self.value = self.step * floor((self.value + self.step/2) / self.step)
+            elif self.type is COLOR:
+                # For colors, just copy the hex string value
+                self.value = old.value
             else:
                 self.value = old.value
 

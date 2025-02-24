@@ -4,6 +4,8 @@ from collections import OrderedDict
 from ..lib.cocoa import *
 from math import floor, ceil
 import objc
+from ..gfx.colors import Color
+from ..gfx.atoms import COLOR, NUMBER, TEXT, BOOLEAN, BUTTON
 
 ## classes instantiated by PlotDeviceDocument.xib & PlotDeviceScript.xib
 
@@ -156,6 +158,14 @@ class DashboardRow(NSView):
             control.setAction_(objc.selector(self.buttonClicked_, signature=b"v@:@@"))
             self.addSubview_(control)
 
+        elif var.type is COLOR:
+            control = NSColorWell.alloc().init()
+            control.setColor_(Color(var.value).nsColor)
+            control.setTarget_(self)
+            control.setAction_(objc.selector(self.colorChanged_, signature=b"v@:@@"))
+            control.sizeToFit()
+            self.addSubview_(control)
+
         self.name = var.name
         self.type = var.type
         self.label = label
@@ -213,6 +223,9 @@ class DashboardRow(NSView):
             self.button_w = control.frame().size.width
             control.setBezelColor_(getattr(var.color, '_rgb', None))
 
+        elif var.type is COLOR:
+            control.setColor_(Color(var.value).nsColor)
+
     @objc.python_method
     def updateLayout(self, indent, width, row_width, offset):
         self.setFrame_(((0,  offset), (row_width, 30)))
@@ -226,6 +239,8 @@ class DashboardRow(NSView):
             self.num.setFrameOrigin_((width + 5, 0))
         elif self.type is BUTTON:
             self.control.setFrameOrigin_((indent-5, -5))
+        elif self.type is COLOR:
+            self.control.setFrame_(((indent, 0), (44, 23)))
 
     def numberChanged_(self, sender):
         self.roundOff()
@@ -244,6 +259,45 @@ class DashboardRow(NSView):
     def buttonClicked_(self, sender):
         if self.delegate:
             self.delegate.callHandler_(self.name)
+
+    def colorChanged_(self, sender):
+        if self.delegate:
+            color = sender.color()
+            
+            # Try to get RGB values first
+            try:
+                r, g, b, a = color.getRed_green_blue_alpha_(None, None, None, None)
+                hex_color = "#{:02x}{:02x}{:02x}".format(
+                    int(r * 255), 
+                    int(g * 255), 
+                    int(b * 255)
+                )
+            except ValueError:
+                # If RGB fails, try grayscale
+                try:
+                    w, a = color.getWhite_alpha_(None, None)
+                    hex_color = "#{:02x}{:02x}{:02x}".format(
+                        int(w * 255),
+                        int(w * 255),
+                        int(w * 255)
+                    )
+                except ValueError:
+                    # If grayscale fails, try CMYK
+                    try:
+                        c, m, y, k, a = color.getCyan_magenta_yellow_black_alpha_(None, None, None, None, None)
+                        # Convert to RGB first (using Color class's conversion)
+                        rgb_color = Color(CMYK, c, m, y, k)
+                        r, g, b = rgb_color.rgba[:3]
+                        hex_color = "#{:02x}{:02x}{:02x}".format(
+                            int(r * 255),
+                            int(g * 255),
+                            int(b * 255)
+                        )
+                    except:
+                        # If all conversions fail, default to black
+                        hex_color = "#000000"
+            
+            self.delegate.setVariable_to_(self.name, hex_color)
 
 class DashboardController(NSObject):
     script = IBOutlet()
