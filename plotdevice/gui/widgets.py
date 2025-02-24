@@ -82,6 +82,13 @@ class DashboardSwitch(NSSwitch):
         return True
 
 class DashboardRow(NSView):
+    # Layout constants
+    MARGIN_LEFT = 10
+    MARGIN_RIGHT = 10
+    ROW_HEIGHT = 30
+    LABEL_HEIGHT = 18
+    CONTROL_HEIGHT = 23
+    LABEL_PADDING = 15  # Space between label and control
 
     def initWithVariable_forDelegate_(self, var, delegate):
         self.initWithFrame_(((0,-999), (200, 30)))
@@ -243,21 +250,37 @@ class DashboardRow(NSView):
 
     @objc.python_method
     def updateLayout(self, indent, width, row_width, offset):
-        self.setFrame_(((0,  offset), (row_width, 30)))
-        self.label.setFrame_(((10, 0), (indent-15, 18)))
+        # Base row frame
+        self.setFrame_(((0, offset), (row_width, self.ROW_HEIGHT)))
+        
+        # Center label vertically - use actual label height for perfect centering
+        label_height = self.label.frame().size.height  # Get actual height instead of LABEL_HEIGHT
+        label_y = (self.ROW_HEIGHT - label_height) / 2
+        control_y = (self.ROW_HEIGHT - self.CONTROL_HEIGHT) / 2
+        
+        # Position label with right alignment
+        self.label.setFrame_(((self.MARGIN_LEFT, label_y), 
+                             (indent - self.LABEL_PADDING, label_height)))
+        self.label.setAlignment_(NSRightTextAlignment)  # Ensure right alignment
+        
+        # Available width for controls
+        control_width = width - indent - self.MARGIN_RIGHT
+        
+        # Position control based on type
         if self.type is TEXT:
-            self.control.setFrame_(((indent, 3),(width - indent, 18)))
+            self.control.setFrame_(((indent, control_y), (control_width, self.CONTROL_HEIGHT)))
         elif self.type is BOOLEAN:
-            self.control.setFrameOrigin_((indent, 0))
+            self.control.setFrameOrigin_((indent, control_y))
         elif self.type is NUMBER:
-            self.control.setFrame_(((indent, 1), (width - indent, 18)))
-            self.num.setFrameOrigin_((width + 5, 0))
+            slider_width = control_width - self.num_w - 10
+            self.control.setFrame_(((indent, control_y), (slider_width, self.CONTROL_HEIGHT)))
+            self.num.setFrameOrigin_((indent + slider_width + 10, control_y))
         elif self.type is BUTTON:
-            self.control.setFrameOrigin_((indent-5, -5))
+            self.control.setFrameOrigin_((indent, control_y - 5))  # Buttons need slight adjustment
         elif self.type is COLOR:
-            self.control.setFrame_(((indent, 0), (44, 23)))
+            self.control.setFrame_(((indent, control_y), (44, self.CONTROL_HEIGHT)))
         elif self.type is SELECT:
-            self.control.setFrame_(((indent, 0), (width - indent - 50, 23)))
+            self.control.setFrame_(((indent, control_y), (control_width, self.CONTROL_HEIGHT)))
 
     def numberChanged_(self, sender):
         self.roundOff()
