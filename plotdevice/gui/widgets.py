@@ -112,6 +112,7 @@ class DashboardRow(NSView):
             control.setTarget_(self)
             control.setAutoresizingMask_(NSViewWidthSizable)
             control.setDelegate_(self)
+            control.sizeToFit()
             self.addSubview_(control)
 
         elif var.type is BOOLEAN:
@@ -267,7 +268,9 @@ class DashboardRow(NSView):
         
         # Position control based on type
         if self.type is TEXT:
-            self.control.setFrame_(((indent, control_y), (control_width, self.CONTROL_HEIGHT)))
+            text_height = self.control.frame().size.height
+            text_y = (self.ROW_HEIGHT - text_height) / 2  # Special case for text field height
+            self.control.setFrame_(((indent, text_y), (control_width, text_height)))
         elif self.type is BOOLEAN:
             self.control.setFrameOrigin_((indent, control_y))
         elif self.type is NUMBER:
