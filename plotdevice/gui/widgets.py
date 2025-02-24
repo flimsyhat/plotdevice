@@ -460,7 +460,7 @@ class DashboardController(NSObject):
         # Calculate panel dimensions using DashboardRow constants
         label_width = max(row.label_w for row in self.rows.values())
         button_width = max(row.button_w for row in self.rows.values())
-        number_width = max(row.num_w for row in self.rows.values())
+        number_width = max((row.num_w for row in self.rows.values() if row.type is NUMBER), default=0)
         
         # Calculate total heights and widths
         total_height = (len(self.rows) * DashboardRow.ROW_HEIGHT) + self.PANEL_PADDING
@@ -468,8 +468,7 @@ class DashboardController(NSObject):
         total_width = (
             label_width + 
             DashboardRow.LABEL_PADDING + 
-            control_width + 
-            number_width
+            control_width
         )
 
         # Set panel constraints
@@ -506,8 +505,8 @@ class DashboardController(NSObject):
         # Update row layouts
         indent = label_width + DashboardRow.LABEL_PADDING
         for idx, row in enumerate(self.rows.values()):
-            row.updateLayout(indent, total_width - DashboardRow.MARGIN_RIGHT - number_width, 
-                           total_width, idx * DashboardRow.ROW_HEIGHT)
+            row.updateLayout(indent, total_width - DashboardRow.MARGIN_RIGHT,
+                    total_width, idx * DashboardRow.ROW_HEIGHT)
 
         self.panel.orderFront_(None)
 
