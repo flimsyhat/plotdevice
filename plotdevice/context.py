@@ -1574,6 +1574,7 @@ class Context(object):
         BOOLEAN: a checkbox
         BUTTON:  a clickable button that calls a function
         COLOR:   a color well for choosing colors
+        SELECT:  a dropdown menu for selecting one of several options
         """
         # Check for conflicts before creating the Variable
         if hasattr(self, name) and callable(getattr(self, name)):
