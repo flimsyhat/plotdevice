@@ -1569,12 +1569,12 @@ class Context(object):
         The var() command lets you create UI controls that affect values in your script.
         The variable's type determines what kind of UI control is created:
         
-        NUMBER:  a slider with optional min/max/step values
-        TEXT:    a text field 
-        BOOLEAN: a checkbox
-        BUTTON:  a clickable button that calls a function
-        COLOR:   a color well for choosing colors
-        SELECT:  a dropdown menu for selecting one of several options
+        NUMBER:  var('num', NUMBER, min, max, step=1, value=min)
+        TEXT:    var('txt', TEXT, value='')
+        BOOLEAN: var('flag', BOOLEAN, value=False)
+        BUTTON:  var('btn', BUTTON, 'Label', color='#ff0000')
+        COLOR:   var('clr', COLOR, value='#cccccc')
+        SELECT:  var('choice', SELECT, ['A','B','C'], value='A')
         """
         # Check for conflicts before creating the Variable
         if hasattr(self, name) and callable(getattr(self, name)):

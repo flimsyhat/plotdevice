@@ -398,83 +398,79 @@ class Variable(object):
         self.label = re_punct.sub(r'\1:', kwargs.get('label', name))
 
         if self.type == COLOR:
-            # Get the color value from args or use a default
-            color_str = next(iter(args), None)
-            if color_str is None:
-                # Use a light gray as default instead of black
-                color_str = "#cccccc"
+            # Validate: value can't be both positional and kwarg
+            if args and 'value' in kwargs:
+                raise DeviceError("COLOR value cannot be specified both positionally and as a keyword argument")
+            color_str = kwargs.get('value', args[0] if args else '#cccccc')
             try:
-                # Validate by attempting to create a Color object
                 Color(color_str)
                 self.value = color_str
             except:
                 badcolor = "Invalid color specification for variable '%s': %r"%(name, color_str)
                 raise DeviceError(badcolor)
 
-        if self.type == NUMBER:
-            attrs = ['value', 'min', 'max', 'step']
-            for attr, val in zip(attrs, args):
-                setattr(self, attr, val)
-            for attr, val in kwargs.items():
-                if attr in attrs:
-                    setattr(self, attr, val)
-
-            self.min = getattr(self, 'min', 0)
-            if hasattr(self, 'value'):
-                self.max = getattr(self, 'max', 100 if 0 <= self.value <= 100 else self.value * 2)
-            else:
-                self.max = getattr(self, 'max', 100)
+        elif self.type == NUMBER:
+            # NUMBER: Requires min/max, optional step/value
+            if len(args) < 2:
+                raise DeviceError("NUMBER variable requires min and max values")
+            self.min, self.max = args[0:2]
             self.min, self.max = min(self.min, self.max), max(self.min, self.max)
-            self.value = getattr(self, 'value', (self.min + self.max) / 2)
-            self.step = getattr(self, 'step', None)
+            
+            # Validate: step/value can't be both positional and kwargs
+            remaining_args = args[2:]
+            if len(remaining_args) > 0 and 'step' in kwargs:
+                raise DeviceError("Step value cannot be specified both positionally and as a keyword argument")
+            if len(remaining_args) > 1 and 'value' in kwargs:
+                raise DeviceError("Value cannot be specified both positionally and as a keyword argument")
+            
+            # First optional arg is step, second is value
+            self.step = kwargs.get('step', remaining_args[0] if remaining_args else None)
+            self.value = kwargs.get('value', remaining_args[1] if len(remaining_args) > 1 else self.min)
 
             if self.step:
                 if ((self.max-self.min) / self.step) % 1 > 0:
                     raise DeviceError("The step size %d doesn't fit evenly into the range %d–%d" % (self.step, self.min, self.max))
                 self.value = self.step * floor((self.value + self.step/2) / self.step)
 
-            small = min(self.min, self.max)
-            big = max(self.min, self.max)
-            if not small <= self.value <= big:
-                raise DeviceError("The value %d doesn't fall with the range %d–%d" % (self.value, self.min, self.max))
+            if not self.min <= self.value <= self.max:
+                raise DeviceError("The value %d doesn't fall within the range %d–%d" % (self.value, self.min, self.max))
 
         elif self.type == TEXT:
-            self.value = next(iter(args), "hello")
+            # Validate: value can't be both positional and kwarg
+            if args and 'value' in kwargs:
+                raise DeviceError("TEXT value cannot be specified both positionally and as a keyword argument")
+            self.value = kwargs.get('value', args[0] if args else '')
+
         elif self.type == BOOLEAN:
-            self.value = bool(next(iter(args), True))
+            # Validate: value can't be both positional and kwarg
+            if args and 'value' in kwargs:
+                raise DeviceError("BOOLEAN value cannot be specified both positionally and as a keyword argument")
+            self.value = kwargs.get('value', args[0] if args else False)
+
         elif self.type == BUTTON:
-            # first arg can be a function name or direct reference
-            if callable(name):
-                self.name = name.__name__
-
-            # use value as button text (else use function name)
-            self.value = next(iter(args), name)
-
-            # only add label text if it's provided explicitly
-            if 'label' not in kwargs:
-                self.label = None
-            clr = kwargs.get('color', None)
+            # Validate: color can't be both positional and kwarg
+            if len(args) > 1 and 'color' in kwargs:
+                raise DeviceError("Button color cannot be specified both positionally and as a keyword argument")
+            self.value = args[0] if args else name
+            clr = kwargs.get('color', args[1] if len(args) > 1 else None)
             self.color = Color(clr) if clr else None
             
         elif self.type == SELECT:
-            # Get options list and default value
-            options = next(iter(args), [])
+            # SELECT: Requires options list, optional value
+            if not args:
+                raise DeviceError("SELECT variable requires a list of options")
+            options = args[0]
             if not isinstance(options, (list, tuple)):
                 raise DeviceError("SELECT variable requires a list of options")
             if not options:
                 raise DeviceError("SELECT variable requires at least one option")
             self.options = options
-            
-            # Use first option as default value if none specified
-            default_idx = kwargs.get('default', 0)
-            if isinstance(default_idx, int):
-                if not 0 <= default_idx < len(options):
-                    raise DeviceError(f"Default index {default_idx} out of range for options list")
-                self.value = options[default_idx]
-            else:
-                if default_idx not in options:
-                    raise DeviceError(f"Default value '{default_idx}' not found in options list")
-                self.value = default_idx
+            # Validate: value can't be both positional and kwarg
+            if len(args) > 1 and 'value' in kwargs:
+                raise DeviceError("SELECT value cannot be specified both positionally and as a keyword argument")
+            self.value = kwargs.get('value', args[1] if len(args) > 1 else options[0])
+            if self.value not in options:
+                raise DeviceError(f"Value '{self.value}' not found in options list")
 
     def inherit(self, old=None):
         if old and old.type is self.type:
