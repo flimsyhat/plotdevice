@@ -88,7 +88,21 @@ class DashboardRow(NSView):
     ROW_HEIGHT = 30
     CONTROL_HEIGHT = 23
     LABEL_PADDING = 15  # Space between label and control
-
+    
+    # Control-specific alignment adjustments
+    TEXT_X_OFFSET = 3
+    TEXT_Y_OFFSET = 0
+    BOOLEAN_X_OFFSET = 2
+    BOOLEAN_Y_OFFSET = 0
+    NUMBER_X_OFFSET = 0
+    NUMBER_Y_OFFSET = 0
+    BUTTON_X_OFFSET = -2
+    BUTTON_Y_OFFSET = -3
+    COLOR_X_OFFSET = 0
+    COLOR_Y_OFFSET = 0
+    SELECT_X_OFFSET = -1
+    SELECT_Y_OFFSET = -1
+    
     def initWithVariable_forDelegate_(self, var, delegate):
         self.initWithFrame_(((0,-999), (200, 30)))
         self.setAutoresizingMask_(NSViewWidthSizable)
@@ -267,23 +281,31 @@ class DashboardRow(NSView):
         # Available width for controls
         control_width = width - indent - self.MARGIN_RIGHT
         
-        # Position control based on type
+        # Position control based on type with consistent offsets
         if self.type is TEXT:
             text_height = self.control.frame().size.height
-            text_y = (self.ROW_HEIGHT - text_height) / 2  # Special case for text field height
-            self.control.setFrame_(((indent, text_y), (control_width, text_height)))
+            text_y = (self.ROW_HEIGHT - text_height) / 2 + self.TEXT_Y_OFFSET
+            self.control.setFrame_(((indent + self.TEXT_X_OFFSET, text_y), 
+                                   (control_width, text_height)))
         elif self.type is BOOLEAN:
-            self.control.setFrameOrigin_((indent, control_y))
+            self.control.setFrameOrigin_((indent + self.BOOLEAN_X_OFFSET, 
+                                         control_y + self.BOOLEAN_Y_OFFSET))
         elif self.type is NUMBER:
             slider_width = control_width - self.num_w - 10
-            self.control.setFrame_(((indent, control_y), (slider_width, self.CONTROL_HEIGHT)))
-            self.num.setFrameOrigin_((indent + slider_width + 10, control_y))
+            self.control.setFrame_(((indent + self.NUMBER_X_OFFSET, control_y + self.NUMBER_Y_OFFSET), 
+                                   (slider_width, self.CONTROL_HEIGHT)))
+            self.num.setFrameOrigin_((indent + slider_width + 10, control_y + self.NUMBER_Y_OFFSET))
         elif self.type is BUTTON:
-            self.control.setFrameOrigin_((indent, control_y - 5))  # Buttons need slight adjustment
+            self.control.setFrameOrigin_((indent + self.BUTTON_X_OFFSET, 
+                                         control_y + self.BUTTON_Y_OFFSET))
         elif self.type is COLOR:
-            self.control.setFrame_(((indent, control_y), (44, self.CONTROL_HEIGHT)))
+            self.control.setFrame_(((indent + self.COLOR_X_OFFSET, control_y + self.COLOR_Y_OFFSET), 
+                                   (44, self.CONTROL_HEIGHT)))
         elif self.type is SELECT:
-            self.control.setFrame_(((indent, control_y), (control_width, self.CONTROL_HEIGHT)))
+            self.control.setFrame_(((indent + self.SELECT_X_OFFSET, control_y + self.SELECT_Y_OFFSET), 
+                                   (control_width, self.CONTROL_HEIGHT)))
+            self.control.cell().setControlSize_(NSSmallControlSize)
+            self.control.setFont_(SMALL_FONT)
 
     def numberChanged_(self, sender):
         self.roundOff()
