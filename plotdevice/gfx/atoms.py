@@ -393,8 +393,13 @@ class Variable(object):
         if not re_var.match(name):
             raise DeviceError('Not a legal variable name: "%s"' % name)
 
+        # Validate that type is one of the allowed variable types
+        valid_types = (NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT)
+        if type not in valid_types:
+            raise DeviceError(f"Invalid variable type: {type}. Must be one of: NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, or SELECT")
+
         self.name = name
-        self.type = type or NUMBER
+        self.type = type
         self.label = re_punct.sub(r'\1:', kwargs.get('label', name))
 
         if self.type == COLOR:
