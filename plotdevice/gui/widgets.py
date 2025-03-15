@@ -5,7 +5,7 @@ from ..lib.cocoa import *
 from math import floor, ceil
 import objc
 from ..gfx.colors import Color
-from ..gfx.atoms import COLOR, NUMBER, TEXT, BOOLEAN, BUTTON, SELECT
+from ..gfx.atoms import COLOR, NUMBER, TEXT, BOOLEAN, BUTTON, SELECT, FILE
 
 ## classes instantiated by PlotDeviceDocument.xib & PlotDeviceScript.xib
 
@@ -102,6 +102,8 @@ class DashboardRow(NSView):
     COLOR_Y_OFFSET = 0
     SELECT_X_OFFSET = -1
     SELECT_Y_OFFSET = -1
+    FILE_X_OFFSET = 3
+    FILE_Y_OFFSET = -1
     
     def initWithVariable_forDelegate_(self, var, delegate):
         self.initWithFrame_(((0,-999), (200, 30)))
@@ -197,6 +199,38 @@ class DashboardRow(NSView):
             control.sizeToFit()
             self.addSubview_(control)
 
+        elif var.type is FILE:
+            # Create a container view with text field and button
+            container = NSView.alloc().init()
+            
+            # Create text field for displaying path
+            textField = NSTextField.alloc().init()
+            textField.setStringValue_(self._get_filename(var.value))
+            textField.setToolTip_(var.value)  # Full path as tooltip
+            textField.setEditable_(False)
+            textField.setBordered_(True)
+            textField.setFont_(SMALL_FONT)
+            textField.cell().setControlSize_(NSSmallControlSize)
+            
+            # Create browse button
+            button = NSButton.alloc().init()
+            button.setTitle_("Browse...")
+            button.setBezelStyle_(1)
+            button.setFont_(SMALL_FONT)
+            button.cell().setControlSize_(NSSmallControlSize)
+            button.setTarget_(self)
+            button.setAction_(objc.selector(self.browseForFile_, signature=b"v@:@@"))
+            
+            # Add subviews to container
+            container.addSubview_(textField)
+            container.addSubview_(button)
+            
+            # Store references
+            self.fileTextField = textField
+            self.fileButton = button
+            control = container
+            self.addSubview_(control)
+
         self.name = var.name
         self.type = var.type
         self.label = label
@@ -262,6 +296,10 @@ class DashboardRow(NSView):
             control.addItemsWithTitles_(var.options)
             control.selectItemWithTitle_(var.value)
 
+        elif var.type is FILE:
+            self.fileTextField.setStringValue_(self._get_filename(var.value))
+            self.fileTextField.setToolTip_(var.value)  # Full path as tooltip
+
     @objc.python_method
     def updateLayout(self, indent, width, row_width, offset):
         # Base row frame
@@ -306,6 +344,16 @@ class DashboardRow(NSView):
                                    (control_width, self.CONTROL_HEIGHT)))
             self.control.cell().setControlSize_(NSSmallControlSize)
             self.control.setFont_(SMALL_FONT)
+        elif self.type is FILE:
+            # Layout container
+            self.control.setFrame_(((indent + self.FILE_X_OFFSET, control_y + self.FILE_Y_OFFSET), 
+                                   (control_width, self.CONTROL_HEIGHT)))
+            
+            # Layout text field and button inside container
+            button_width = 80
+            text_width = control_width - button_width - 5
+            self.fileTextField.setFrame_(((0, 0), (text_width, self.CONTROL_HEIGHT)))
+            self.fileButton.setFrame_(((text_width + 5, 0), (button_width, self.CONTROL_HEIGHT)))
 
     def numberChanged_(self, sender):
         self.roundOff()
@@ -367,6 +415,38 @@ class DashboardRow(NSView):
     def selectChanged_(self, sender):
         if self.delegate:
             self.delegate.setVariable_to_(self.name, sender.titleOfSelectedItem())
+
+    @objc.python_method
+    def _get_filename(self, path):
+        """Extract just the filename from a path"""
+        if not path:
+            return ""
+        return os.path.basename(path)
+
+    def browseForFile_(self, sender):
+        # Create open panel
+        openPanel = NSOpenPanel.openPanel()
+        openPanel.setCanChooseFiles_(True)
+        openPanel.setCanChooseDirectories_(False)
+        openPanel.setAllowsMultipleSelection_(False)
+        
+        # Set allowed file types if specified
+        if self.delegate and hasattr(self.delegate, 'script'):
+            var = self.delegate.script.vm.params[self.name]
+            if var.types:
+                openPanel.setAllowedFileTypes_(var.types)
+        
+        # Show the panel
+        result = openPanel.runModal()
+        if result == NSModalResponseOK:
+            url = openPanel.URLs()[0]
+            path = url.path()
+            # Display just the filename but store the full path
+            self.fileTextField.setStringValue_(self._get_filename(path))
+            # Store the full path as a tooltip
+            self.fileTextField.setToolTip_(path)
+            if self.delegate:
+                self.delegate.setVariable_to_(self.name, path)
 
 class DashboardController(NSObject):
     script = IBOutlet()

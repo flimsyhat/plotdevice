@@ -13,12 +13,12 @@ from .effects import Effect
 _ctx = None
 __all__ = [
         "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_BACKSPACE", "KEY_TAB", "KEY_ESC",
-        "Variable", "NUMBER", "TEXT", "BOOLEAN", "BUTTON", "COLOR", "SELECT",
+        "Variable", "NUMBER", "TEXT", "BOOLEAN", "BUTTON", "COLOR", "SELECT", "FILE",
         "Grob",
         ]
 
 # var datatypes
-NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT = "number", "text", "boolean", "button", "color", "select"
+NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT, FILE = "number", "text", "boolean", "button", "color", "select", "file"
 
 # ui events
 KEY_UP = 126
@@ -394,9 +394,9 @@ class Variable(object):
             raise DeviceError('Not a legal variable name: "%s"' % name)
 
         # Validate that type is one of the allowed variable types
-        valid_types = (NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT)
+        valid_types = (NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT, FILE)
         if type not in valid_types:
-            raise DeviceError(f"Invalid variable type: {type}. Must be one of: NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, or SELECT")
+            raise DeviceError(f"Invalid variable type: {type}. Must be one of: NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT, or FILE")
 
         self.name = name
         self.type = type
@@ -476,6 +476,24 @@ class Variable(object):
             self.value = kwargs.get('value', args[1] if len(args) > 1 else options[0])
             if self.value not in options:
                 raise DeviceError(f"Value '{self.value}' not found in options list")
+
+        elif self.type == FILE:
+            # FILE: Optional value and file types
+            # Validate: value can't be both positional and kwarg
+            if args and 'value' in kwargs:
+                raise DeviceError("FILE path cannot be specified both positionally and as a keyword argument")
+            
+            # Get file path (optional)
+            self.value = kwargs.get('value', args[0] if args else '')
+            
+            # Get allowed file types (optional)
+            if len(args) > 1 and 'types' in kwargs:
+                raise DeviceError("File types cannot be specified both positionally and as a keyword argument")
+            self.types = kwargs.get('types', args[1] if len(args) > 1 else [])
+            
+            # Validate file types is a list
+            if not isinstance(self.types, (list, tuple)):
+                self.types = [self.types] if self.types else []
 
     def inherit(self, old=None):
         if old and old.type is self.type:
