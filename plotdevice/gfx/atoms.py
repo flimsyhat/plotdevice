@@ -2,6 +2,7 @@
 import re
 from math import floor
 from collections import namedtuple, defaultdict
+import os
 
 from .. import DeviceError
 from ..lib.foundry import fontspec
@@ -483,17 +484,44 @@ class Variable(object):
             if args and 'value' in kwargs:
                 raise DeviceError("FILE path cannot be specified both positionally and as a keyword argument")
             
-            # Get file path (optional)
-            self.value = kwargs.get('value', args[0] if args else '')
-            
             # Get allowed file types (optional)
             if len(args) > 1 and 'types' in kwargs:
                 raise DeviceError("File types cannot be specified both positionally and as a keyword argument")
-            self.types = kwargs.get('types', args[1] if len(args) > 1 else [])
             
-            # Validate file types is a list
-            if not isinstance(self.types, (list, tuple)):
-                self.types = [self.types] if self.types else []
+            # Process file types
+            raw_types = kwargs.get('types', args[1] if len(args) > 1 else [])
+            self.types = []
+            if raw_types:
+                # Normalize file types (remove dots, convert to lowercase)
+                self.types = [t.lower().lstrip('.') for t in raw_types] if isinstance(raw_types, (list, tuple)) else [raw_types.lower().lstrip('.')]
+            
+            # Default to empty path
+            self.value = ""
+            
+            # Get file path (optional)
+            path = kwargs.get('value', args[0] if args else '')
+            
+            # If a default path is provided, check for file validity
+            if path:
+                # Check if path exists
+                if not os.path.exists(path):
+                    raise DeviceError(f"File not found: '{path}'")
+                
+                # Check if it's a file (not a directory)
+                if not os.path.isfile(path):
+                    raise DeviceError(f"Path is not a file: '{path}'")
+                
+                # Check file type if types are specified
+                if self.types:
+                    ext = os.path.splitext(path)[1].lower().lstrip('.')
+                    if not ext:
+                        raise DeviceError(f"File has no extension: '{path}'")
+                    if ext not in self.types:
+                        allowed = ', '.join(f'.{t}' for t in self.types)
+                        raise DeviceError(f"File type '.{ext}' not allowed. Must be one of: {allowed}")
+                
+                # All checks passed, set the value
+                self.value = path
 
     def inherit(self, old=None):
         if old and old.type is self.type:
