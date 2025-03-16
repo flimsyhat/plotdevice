@@ -1575,6 +1575,7 @@ class Context(object):
         BUTTON:  var('btn', BUTTON, 'Label', color='#ff0000')
         COLOR:   var('clr', COLOR, value='#cccccc')
         SELECT:  var('choice', SELECT, ['A','B','C'], value='A')
+        FILE:    var('file', FILE, value='default.png', types=['png','jpg','pdf'])
         """
         # Check for conflicts before creating the Variable
         if hasattr(self, name) and callable(getattr(self, name)):
