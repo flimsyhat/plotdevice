@@ -58,6 +58,11 @@ class Context(object):
         self._ns.update( (a,getattr(self,a)) for a in dir(self) if not a.startswith('_') )
         self._ns["_ctx"] = self
 
+        # remove any variables that no longer exist in params
+        for name in list(self._ns.keys()):
+            if name not in self._params and name in self._vars:
+                del self._ns[name]
+
         # clear the canvas and reset the dims/background
         self.canvas.reset()
         self.canvas.background = Color(1.0)
@@ -1577,10 +1582,13 @@ class Context(object):
         SELECT:  var('choice', SELECT, ['A','B','C'], value='A')
         FILE:    var('file', FILE, value='default.png', types=['png','jpg','pdf'])
         """
-        # Check for conflicts before creating the Variable
-        if hasattr(self, name) and callable(getattr(self, name)):
-            raise DeviceError(f"Cannot create a variable named '{name}' - it would conflict with a built-in function")
-        
+        # Check for conflicts with built-ins and duplicate variables
+        if hasattr(self, name):
+            if callable(getattr(self, name)):
+                raise DeviceError(f"Cannot create a variable named '{name}' - it would conflict with a built-in function")
+        if name in self._vars:
+            raise DeviceError(f"Cannot create multiple variables named '{name}' in the same script")
+
         v = Variable(name, type, *args, **kwargs)
         self._vars[v.name] = v
 

@@ -638,11 +638,10 @@ class DashboardController(NSObject):
     def updateInterface(self):
         params = self.script.vm.params
         
-        # Remove old variables
+        # Remove old variable widgets
         for name, widget in list(self.rows.items()):
             if name not in params:
                 widget.removeFromSuperview()
-                self.script.vm.namespace.pop(name, None)
 
         # Update existing and add new variables
         new_rows = OrderedDict()
