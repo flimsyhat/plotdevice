@@ -66,9 +66,13 @@ class Variable(object):
             self.value = kwargs.get('value', remaining_args[1] if len(remaining_args) > 1 else self.min)
 
             if self.step:
-                if ((self.max-self.min) / self.step) % 1 > 0:
-                    raise DeviceError("The step size %g doesn't fit evenly into the range %g–%g" % (self.step, self.min, self.max))
-                self.value = self.step * floor((self.value + self.step/2) / self.step)
+                # No validation needed - we'll just use the step size as provided
+                # and let the slider handle any partial steps at the end
+                
+                # Just ensure the value aligns with steps
+                self.value = min(self.max, max(self.min, 
+                    self.min + self.step * floor((self.value - self.min + self.step/2) / self.step)
+                ))
 
             if not self.min <= self.value <= self.max:
                 raise DeviceError("The value %g doesn't fall within the range %g–%g" % (self.value, self.min, self.max))
