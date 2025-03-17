@@ -386,7 +386,7 @@ class DashboardRow(NSView):
         if self.type is TEXT and self.delegate:
             # Filter out control characters in real-time as user types
             # This prevents unprintable characters from appearing in the UI
-            value = ''.join(c for c in sender.stringValue() if c.isprintable() or c.isspace())
+            value = ''.join(c for c in sender.stringValue() if c.isprintable() or c == ' ')
             
             # If we filtered anything out, update the text field to match
             if value != sender.stringValue():

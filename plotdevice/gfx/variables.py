@@ -113,7 +113,7 @@ class Variable(object):
             # Get value and filter out control characters (newlines, tabs, etc)
             # This ensures the initial/default value is clean
             raw_value = kwargs.get('value', args[0] if args else '')
-            self.value = ''.join(c for c in str(raw_value) if c.isprintable() or c.isspace())
+            self.value = ''.join(c for c in str(raw_value) if c.isprintable() or c == ' ')
 
         elif self.type == BOOLEAN:
             # Validate: value can't be both positional and kwarg
