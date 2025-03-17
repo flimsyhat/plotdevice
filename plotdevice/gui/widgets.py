@@ -82,30 +82,38 @@ class DashboardSwitch(NSSwitch):
         return True
 
 class DashboardRow(NSView):
-    # Layout constants
-    MARGIN_LEFT = 10
-    MARGIN_RIGHT = 10
-    ROW_HEIGHT = 30
-    CONTROL_HEIGHT = 23
-    LABEL_PADDING = 15  # Space between label and control
+    # Base layout measurements, using standard macOS sizes for small controls
+    MARGIN_LEFT = 8         # Left margin of the entire row
+    MARGIN_RIGHT = 8        # Right margin of the entire row
+    ROW_HEIGHT = 22        # Standard small control row height
+    CONTROL_HEIGHT = 19    # Standard small control height
+    LABEL_PADDING = 8      # Space between the label and its control
     
-    # Control-specific alignment adjustments
+    # Fine-tuning offsets for each control type
+    # X offsets adjust horizontal position (negative = left, positive = right)
+    # Y offsets adjust vertical position (negative = down, positive = up)
     TEXT_X_OFFSET = 3
     TEXT_Y_OFFSET = 0
-    BOOLEAN_X_OFFSET = 2
-    BOOLEAN_Y_OFFSET = 0
-    NUMBER_X_OFFSET = 0
+    
+    BOOLEAN_X_OFFSET = 2    # Checkbox position adjustments
+    BOOLEAN_Y_OFFSET = -2
+    
+    NUMBER_X_OFFSET = 0     # Slider position adjustments
     NUMBER_Y_OFFSET = 0
-    NUMBER_FIELD_Y_OFFSET = 2
-    BUTTON_X_OFFSET = -2
-    BUTTON_Y_OFFSET = -4
-    COLOR_X_OFFSET = 0
-    COLOR_Y_OFFSET = 0
-    SELECT_X_OFFSET = -1
+    NUMBER_FIELD_Y_OFFSET = 1   # Move number field up slightly to align with slider
+    
+    BUTTON_X_OFFSET = -2    # Button position adjustments
+    BUTTON_Y_OFFSET = -6
+    
+    COLOR_X_OFFSET = 0      # Color well position adjustments
+    COLOR_Y_OFFSET = -1
+    
+    SELECT_X_OFFSET = -1    # Dropdown menu position adjustments
     SELECT_Y_OFFSET = -1
-    FILE_BUTTON_X_OFFSET = -2
+    
+    FILE_BUTTON_X_OFFSET = -2   # File browser button position adjustments
     FILE_BUTTON_Y_OFFSET = -2
-    FILE_PATH_X_OFFSET = -2
+    FILE_PATH_X_OFFSET = -2     # File path display position adjustments
     FILE_PATH_Y_OFFSET = 0
     
     def initWithVariable_forDelegate_(self, var, delegate):
@@ -547,10 +555,11 @@ class DashboardController(NSObject):
     panel = IBOutlet()
 
     # Layout constants
-    PANEL_PADDING = 30  # Extra space at bottom of panel
-    MIN_CONTROL_WIDTH = 200  # Minimum width for controls
+    PANEL_TOP_PADDING = 5    # Space at top of panel
+    PANEL_BOTTOM_PADDING = 25 # Space at bottom of panel
+    MIN_CONTROL_WIDTH = 200   # Minimum width for controls
     MAX_WIDTH_MULTIPLIER = 5  # Maximum panel width multiplier
-    TITLE_BAR_HEIGHT = 38  # Height of window title bar
+    TITLE_BAR_HEIGHT = 38    # Height of window title bar
 
     def awakeFromNib(self):
         self.panel.contentView().setFlipped_(True)
@@ -660,7 +669,7 @@ class DashboardController(NSObject):
         number_width = max((row.num_w for row in self.rows.values() if row.type is NUMBER), default=0)
         
         # Calculate total heights and widths
-        total_height = (len(self.rows) * DashboardRow.ROW_HEIGHT) + self.PANEL_PADDING
+        total_height = (len(self.rows) * DashboardRow.ROW_HEIGHT) + self.PANEL_TOP_PADDING + self.PANEL_BOTTOM_PADDING
         control_width = max(button_width, self.MIN_CONTROL_WIDTH)
         total_width = (
             label_width + 
@@ -702,8 +711,10 @@ class DashboardController(NSObject):
         # Update row layouts
         indent = label_width + DashboardRow.LABEL_PADDING
         for idx, row in enumerate(self.rows.values()):
+            # Add top padding to initial offset for each row
+            row_offset = self.PANEL_TOP_PADDING + (idx * DashboardRow.ROW_HEIGHT)
             row.updateLayout(indent, total_width - DashboardRow.MARGIN_RIGHT,
-                    total_width, idx * DashboardRow.ROW_HEIGHT)
+                    total_width, row_offset)
 
         self.panel.orderFront_(None)
 
