@@ -96,6 +96,7 @@ class DashboardRow(NSView):
     BOOLEAN_Y_OFFSET = 0
     NUMBER_X_OFFSET = 0
     NUMBER_Y_OFFSET = 0
+    NUMBER_FIELD_Y_OFFSET = 2
     BUTTON_X_OFFSET = -2
     BUTTON_Y_OFFSET = -4
     COLOR_X_OFFSET = 0
@@ -155,21 +156,27 @@ class DashboardRow(NSView):
             control.setAction_(objc.selector(self.numberChanged_, signature=b"v@:@@"))
             self.addSubview_(control)
 
+            # Create a standard text field with border
             num = NSTextField.alloc().init()
-            num.setBordered_(False)
-            num.setEditable_(False)
+            num.setBordered_(True)
+            num.setEditable_(True)
             num.setAutoresizingMask_(NSViewMinXMargin)
             num.setSelectable_(True)
-            num.setDrawsBackground_(False)
+            num.setDrawsBackground_(True)
             num.setFont_(SMALL_FONT)
-
-            # measure all the possible values to decide on the text-field width
-            num_w = self._num_w(var.min, var.max, var.step)
+            num.setDelegate_(self)  # Set delegate to handle text changes
+            
+            # Use a standard width instead of calculating based on possible values
+            standard_num_width = 40
             num.setStringValue_(self._fmt(var.value))
-            num.setFrameSize_((num_w, 18))
+            num.setFrameSize_((standard_num_width, 18))
             self.addSubview_(num)
             self.step = var.step
             self.num = num
+            self.num_w = standard_num_width  # Store the width for layout
+            
+            # Add action to handle text field changes
+            num.setAction_(objc.selector(self.controlTextDidEndEditing_, signature=b"v@:@@"))
 
         elif var.type is BUTTON:
             control = NSButton.alloc().init()
@@ -231,16 +238,16 @@ class DashboardRow(NSView):
         self.label = label
         self.control = control
         self.button_w = control.frame().size.width if var.type is BUTTON else 0
-        self.num_w = num_w if var.type is NUMBER else 0
         self.label_w = label.frame().size.width
         self.delegate = delegate
         return self
 
     @objc.python_method
     def _fmt(self, num):
-        s = "{:,.3f}".format(num)
-        s = re.sub(r'\.0+$', '', s)
-        return re.sub(r'(\.[^0])+0*$', r'\1', s)
+        """Format number with up to 3 decimal places"""
+        # Format with 3 decimal places and strip trailing zeros/decimal
+        s = "{:.3f}".format(num).rstrip('0').rstrip('.')
+        return s
 
     @objc.python_method
     def _num_w(self, lo, hi, step):
@@ -275,7 +282,6 @@ class DashboardRow(NSView):
             control.setMaxValue_(var.max)
             control.setMinValue_(var.min)
             self.step = var.step
-            self.num_w = self._num_w(var.min, var.max, var.step)
             self.roundOff()
 
         elif var.type is BUTTON:
@@ -331,7 +337,8 @@ class DashboardRow(NSView):
             slider_width = control_width - self.num_w - 10
             self.control.setFrame_(((indent + self.NUMBER_X_OFFSET, control_y + self.NUMBER_Y_OFFSET), 
                                    (slider_width, self.CONTROL_HEIGHT)))
-            self.num.setFrameOrigin_((indent + slider_width + 10, control_y + self.NUMBER_Y_OFFSET))
+            num_y = control_y + self.NUMBER_Y_OFFSET + self.NUMBER_FIELD_Y_OFFSET
+            self.num.setFrameOrigin_((indent + slider_width + 10, num_y))
         elif self.type is BUTTON:
             self.control.setFrameOrigin_((indent + self.BUTTON_X_OFFSET, 
                                          control_y + self.BUTTON_Y_OFFSET))
@@ -362,9 +369,43 @@ class DashboardRow(NSView):
             self.delegate.setVariable_to_(self.name, sender.floatValue())
 
     def controlTextDidChange_(self, note):
-        if self.delegate:
-            sender = note.object()
+        """Handle changes to text variables as they're typed"""
+        sender = note.object()
+        
+        # Only process for TEXT variables, not NUMBER variables
+        if self.type is TEXT and self.delegate:
             self.delegate.setVariable_to_(self.name, sender.stringValue())
+
+    def controlTextDidEndEditing_(self, notification):
+        """Handle when user finishes editing text in a text field"""
+        sender = notification.object()
+        
+        # Check if this is our number field
+        if hasattr(self, 'num') and sender == self.num:
+            try:
+                # Try to parse the value as a float
+                value_str = sender.stringValue()
+                value = float(value_str.replace(',', ''))
+                
+                # Constrain to min/max
+                value = max(self.control.minValue(), min(self.control.maxValue(), value))
+                
+                # Apply step if needed
+                if self.step:
+                    value = self.step * floor((value + self.step/2) / self.step)
+                
+                # Update the slider
+                self.control.setFloatValue_(value)
+                
+                # Update the text field with properly formatted value
+                sender.setStringValue_(self._fmt(value))
+                
+                # Notify delegate
+                if self.delegate:
+                    self.delegate.setVariable_to_(self.name, value)
+            except ValueError:
+                # If parsing fails, reset to current slider value
+                sender.setStringValue_(self._fmt(self.control.floatValue()))
 
     def booleanChanged_(self, sender):
         if self.delegate:

@@ -5,6 +5,7 @@ from math import floor
 from .. import DeviceError
 from ..util import trim_zeroes
 from .colors import Color
+import objc
 
 # Variable types
 NUMBER = "number"
@@ -157,9 +158,13 @@ class Variable(object):
     def inherit(self, old=None):
         if old and old.type is self.type:
             if self.type is NUMBER:
-                self.value = max(self.min, min(self.max, old.value))
-                if self.step:
-                    self.value = self.step * floor((self.value + self.step/2) / self.step)
+                try:
+                    old_value = float(old.value) if isinstance(old.value, (str, objc.pyobjc_unicode)) else old.value
+                    self.value = round(max(self.min, min(self.max, old_value)), 3)
+                    if self.step:
+                        self.value = self.step * floor((self.value + self.step/2) / self.step)
+                except (ValueError, TypeError):
+                    self.value = self.min
             elif self.type is COLOR:
                 self.value = old.value
             else:
