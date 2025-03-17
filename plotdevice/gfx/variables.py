@@ -67,11 +67,11 @@ class Variable(object):
 
             if self.step:
                 if ((self.max-self.min) / self.step) % 1 > 0:
-                    raise DeviceError("The step size %d doesn't fit evenly into the range %d–%d" % (self.step, self.min, self.max))
+                    raise DeviceError("The step size %g doesn't fit evenly into the range %g–%g" % (self.step, self.min, self.max))
                 self.value = self.step * floor((self.value + self.step/2) / self.step)
 
             if not self.min <= self.value <= self.max:
-                raise DeviceError("The value %d doesn't fall within the range %d–%d" % (self.value, self.min, self.max))
+                raise DeviceError("The value %g doesn't fall within the range %g–%g" % (self.value, self.min, self.max))
 
         elif self.type == TEXT:
             # Validate: value can't be both positional and kwarg
