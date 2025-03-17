@@ -99,7 +99,7 @@ class DashboardRow(NSView):
     BOOLEAN_Y_OFFSET = -2
     
     NUMBER_X_OFFSET = 1     # Slider position adjustments
-    NUMBER_Y_OFFSET = 0
+    NUMBER_Y_OFFSET = -1
     NUMBER_FIELD_Y_OFFSET = 1   # Move number field up slightly to align with slider
     
     BUTTON_X_OFFSET = -3    # Button position adjustments
@@ -139,6 +139,8 @@ class DashboardRow(NSView):
             control.setTarget_(self)
             control.setAutoresizingMask_(NSViewWidthSizable)
             control.setDelegate_(self)
+            control.setBordered_(True)
+            control.setDrawsBackground_(True)
             control.sizeToFit()
             self.addSubview_(control)
 
