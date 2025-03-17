@@ -208,8 +208,8 @@ class DashboardRow(NSView):
 
         elif var.type is SELECT:
             control = NSPopUpButton.alloc().init()
-            control.addItemsWithTitles_(var.options)
-            control.selectItemWithTitle_(var.value)
+            control.addItemsWithTitles_(var._display_options)
+            control.selectItemWithTitle_(str(var.value))
             control.setTarget_(self)
             control.setAction_(objc.selector(self.selectChanged_, signature=b"v@:@@"))
             control.cell().setControlSize_(NSSmallControlSize)
@@ -302,8 +302,8 @@ class DashboardRow(NSView):
 
         elif var.type is SELECT:
             control.removeAllItems()
-            control.addItemsWithTitles_(var.options)
-            control.selectItemWithTitle_(var.value)
+            control.addItemsWithTitles_(var._display_options)
+            control.selectItemWithTitle_(str(var.value))
 
         elif var.type is FILE:
             if var.value:
@@ -466,7 +466,11 @@ class DashboardRow(NSView):
 
     def selectChanged_(self, sender):
         if self.delegate:
-            self.delegate.setVariable_to_(self.name, sender.titleOfSelectedItem())
+            # Get the selected item's index
+            idx = sender.indexOfSelectedItem()
+            # Get the original value from the options list using delegate
+            original_value = self.delegate.script.vm.params[self.name].options[idx]
+            self.delegate.setVariable_to_(self.name, original_value)
 
     def browseForFile_(self, sender):
         # Create open panel

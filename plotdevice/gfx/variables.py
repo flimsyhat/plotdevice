@@ -106,11 +106,19 @@ class Variable(object):
                 raise DeviceError("SELECT variable requires a list of options")
             if not options:
                 raise DeviceError("SELECT variable requires at least one option")
+            
+            # Store both original values and their string representations
             self.options = options
+            self._display_options = [str(opt) for opt in options]
+            
             # Validate: value can't be both positional and kwarg
             if len(args) > 1 and 'value' in kwargs:
                 raise DeviceError("SELECT value cannot be specified both positionally and as a keyword argument")
+            
+            # Get value
             self.value = kwargs.get('value', args[1] if len(args) > 1 else options[0])
+            
+            # Validate value is in options
             if self.value not in options:
                 raise DeviceError(f"Value '{self.value}' not found in options list")
 
