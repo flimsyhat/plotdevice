@@ -384,7 +384,16 @@ class DashboardRow(NSView):
         
         # Only process for TEXT variables, not NUMBER variables
         if self.type is TEXT and self.delegate:
-            self.delegate.setVariable_to_(self.name, sender.stringValue())
+            # Filter out control characters in real-time as user types
+            # This prevents unprintable characters from appearing in the UI
+            value = ''.join(c for c in sender.stringValue() if c.isprintable() or c.isspace())
+            
+            # If we filtered anything out, update the text field to match
+            if value != sender.stringValue():
+                sender.setStringValue_(value)
+            
+            # Send the clean value to be stored
+            self.delegate.setVariable_to_(self.name, value)
 
     def controlTextDidEndEditing_(self, notification):
         """Handle when user finishes editing text in a text field"""
