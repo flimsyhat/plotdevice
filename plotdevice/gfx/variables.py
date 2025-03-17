@@ -16,6 +16,9 @@ COLOR = "color"
 SELECT = "select"
 FILE = "file"
 
+# Constants for UI limits
+MAX_LABEL_LENGTH = 25  # Maximum characters for variable labels and button text
+
 __all__ = ["Variable", "NUMBER", "TEXT", "BOOLEAN", "BUTTON", "COLOR", "SELECT", "FILE"]
 
 re_var = re.compile(r'[A-Za-z_][A-Za-z0-9_]*$')
@@ -33,7 +36,12 @@ class Variable(object):
 
         self.name = name
         self.type = type
-        self.label = re_punct.sub(r'\1:', kwargs.get('label', name))
+        
+        # Get label and truncate if too long
+        raw_label = kwargs.get('label', name)
+        if len(raw_label) > MAX_LABEL_LENGTH:
+            raw_label = raw_label[:MAX_LABEL_LENGTH-1] + '…'
+        self.label = re_punct.sub(r'\1:', raw_label)
 
         if self.type == COLOR:
             # Validate: value can't be both positional and kwarg
@@ -113,7 +121,14 @@ class Variable(object):
             # Validate: color can't be both positional and kwarg
             if len(args) > 1 and 'color' in kwargs:
                 raise DeviceError("Button color cannot be specified both positionally and as a keyword argument")
-            self.value = args[0] if args else name
+            
+            # Get label and truncate if too long (25 characters)
+            label = args[0] if args else name
+            if len(label) > MAX_LABEL_LENGTH:
+                label = label[:MAX_LABEL_LENGTH-1] + '…'
+            self.value = label
+            
+            # Handle color
             clr = kwargs.get('color', args[1] if len(args) > 1 else None)
             self.color = Color(clr) if clr else None
             
