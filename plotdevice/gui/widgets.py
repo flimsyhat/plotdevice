@@ -5,7 +5,7 @@ from ..lib.cocoa import *
 from math import floor, ceil
 import objc
 from ..gfx.colors import Color
-from ..gfx.atoms import COLOR, NUMBER, TEXT, BOOLEAN, BUTTON, SELECT, FILE
+from ..gfx.variables import NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT, FILE
 
 ## classes instantiated by PlotDeviceDocument.xib & PlotDeviceScript.xib
 
