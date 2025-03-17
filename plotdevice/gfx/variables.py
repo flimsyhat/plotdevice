@@ -51,8 +51,28 @@ class Variable(object):
             # NUMBER: Requires min/max, optional step/value
             if len(args) < 2:
                 raise DeviceError("NUMBER variable requires min and max values")
-            self.min, self.max = args[0:2]
-            self.min, self.max = min(self.min, self.max), max(self.min, self.max)
+            
+            # Validate min/max are valid floats and within bounds
+            try:
+                self.min = float(args[0])
+                self.max = float(args[1])
+                
+                # Set reasonable bounds to ensure NSSlider works reliably and doesn't crash for really large values
+                MAX_SLIDER = 1e6  # Million
+                MIN_SLIDER = -1e6 # Negative million
+                
+                if not (MIN_SLIDER <= self.min <= MAX_SLIDER):
+                    raise DeviceError(f"Min value {self.min} is outside valid range ({MIN_SLIDER} to {MAX_SLIDER})")
+                if not (MIN_SLIDER <= self.max <= MAX_SLIDER):
+                    raise DeviceError(f"Max value {self.max} is outside valid range ({MIN_SLIDER} to {MAX_SLIDER})")
+            except (ValueError, TypeError):
+                raise DeviceError("Min and max values must be valid numbers")
+            
+            # Warn if range is inverted (but still handle it)
+            if self.min > self.max:
+                import warnings
+                warnings.warn(f"Range is inverted: min ({self.min}) > max ({self.max}). Values will be swapped.")
+                self.min, self.max = self.max, self.min
             
             # Validate: step/value can't be both positional and kwargs
             remaining_args = args[2:]
