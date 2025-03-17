@@ -48,7 +48,8 @@ from AppKit import NSAlert, NSApp, NSAppearance, NSApplication, NSApplicationAct
                    NSTrackingMouseMoved, NSUnboldFontMask, NSUnionRect, NSUnitalicFontMask, NSView, \
                    NSViewFrameDidChangeNotification, NSViewMinXMargin, NSViewWidthSizable, NSWindow, \
                    NSWindowBackingLocationVideoMemory, NSWindowController, NSWindowTabbingModeAutomatic, \
-                   NSWindowTabbingModePreferred, NSWorkspace, NSColorWell, NSPathControl, NSPathComponentCell, NSPopUpButton
+                   NSWindowTabbingModePreferred, NSWorkspace, NSColorWell, NSColorPanel, NSPathControl, \
+                   NSPathComponentCell, NSPopUpButton
 from Foundation import CIAffineTransform, CIColorMatrix, CIContext, CIFilter, CIImage, CIVector, Foundation, NO, \
                        NSAffineTransform, NSAffineTransformStruct, NSAttributedString, NSAutoreleasePool, NSBundle, \
                        NSData, NSDate, NSDateFormatter, NSFileCoordinator, NSFileHandle, \

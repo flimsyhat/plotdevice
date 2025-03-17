@@ -77,6 +77,13 @@ from ..context import NUMBER, TEXT, BOOLEAN, BUTTON
 SMALL_FONT = NSFont.systemFontOfSize_(NSFont.smallSystemFontSize())
 MINI_FONT = NSFont.systemFontOfSize_(NSFont.systemFontSizeForControlSize_(NSMiniControlSize))
 
+# Custom subclass of NSColorWell that keeps the color panel in front
+class FrontColorWell(NSColorWell):
+    def activate_(self, exclusive):
+        result = super(FrontColorWell, self).activate_(exclusive)
+        NSColorPanel.sharedColorPanel().orderFront_(self)
+        return result
+
 class DashboardSwitch(NSSwitch):
     def acceptsFirstMouse_(self, e):
         return True
@@ -201,7 +208,8 @@ class DashboardRow(NSView):
             self.addSubview_(control)
 
         elif var.type is COLOR:
-            control = NSColorWell.alloc().init()
+            # Create our custom color well that keeps the panel in front
+            control = FrontColorWell.alloc().init()
             control.setColor_(Color(var.value).nsColor)
             control.setTarget_(self)
             control.setAction_(objc.selector(self.colorChanged_, signature=b"v@:@@"))
@@ -438,6 +446,9 @@ class DashboardRow(NSView):
 
     def colorChanged_(self, sender):
         if self.delegate:
+            # Make sure color panel stays in front of variable panel
+            NSColorPanel.sharedColorPanel().orderFront_(self)
+            
             color = sender.color()
             
             # Try to get RGB values first
