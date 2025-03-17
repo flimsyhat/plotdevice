@@ -92,17 +92,17 @@ class DashboardRow(NSView):
     # Fine-tuning offsets for each control type
     # X offsets adjust horizontal position (negative = left, positive = right)
     # Y offsets adjust vertical position (negative = down, positive = up)
-    TEXT_X_OFFSET = 3
+    TEXT_X_OFFSET = 2
     TEXT_Y_OFFSET = 0
     
-    BOOLEAN_X_OFFSET = 2    # Checkbox position adjustments
+    BOOLEAN_X_OFFSET = 1    # Checkbox position adjustments
     BOOLEAN_Y_OFFSET = -2
     
-    NUMBER_X_OFFSET = 0     # Slider position adjustments
+    NUMBER_X_OFFSET = 1     # Slider position adjustments
     NUMBER_Y_OFFSET = 0
     NUMBER_FIELD_Y_OFFSET = 1   # Move number field up slightly to align with slider
     
-    BUTTON_X_OFFSET = -2    # Button position adjustments
+    BUTTON_X_OFFSET = -3    # Button position adjustments
     BUTTON_Y_OFFSET = -6
     
     COLOR_X_OFFSET = 0      # Color well position adjustments
@@ -111,7 +111,7 @@ class DashboardRow(NSView):
     SELECT_X_OFFSET = -1    # Dropdown menu position adjustments
     SELECT_Y_OFFSET = -1
     
-    FILE_BUTTON_X_OFFSET = -2   # File browser button position adjustments
+    FILE_BUTTON_X_OFFSET = -3   # File browser button position adjustments
     FILE_BUTTON_Y_OFFSET = -2
     FILE_PATH_X_OFFSET = -2     # File path display position adjustments
     FILE_PATH_Y_OFFSET = 0
@@ -336,8 +336,10 @@ class DashboardRow(NSView):
         if self.type is TEXT:
             text_height = self.control.frame().size.height
             text_y = (self.ROW_HEIGHT - text_height) / 2 + self.TEXT_Y_OFFSET
-            self.control.setFrame_(((indent + self.TEXT_X_OFFSET, text_y), 
-                                   (control_width, text_height)))
+            # Adjust width by 1px while maintaining autoresizing behavior
+            frame = ((indent + self.TEXT_X_OFFSET, text_y), 
+                    (control_width - 1, text_height))
+            self.control.setFrame_(frame)
         elif self.type is BOOLEAN:
             self.control.setFrameOrigin_((indent + self.BOOLEAN_X_OFFSET, 
                                          control_y + self.BOOLEAN_Y_OFFSET))
