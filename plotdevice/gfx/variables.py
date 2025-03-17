@@ -46,7 +46,7 @@ class Variable(object):
         if self.type == COLOR:
             # Validate: value can't be both positional and kwarg
             if args and 'value' in kwargs:
-                raise DeviceError("COLOR value cannot be specified both positionally and as a keyword argument")
+                raise DeviceError("Color value cannot be specified both positionally and as a keyword argument")
             color_str = kwargs.get('value', args[0] if args else '#cccccc')
             try:
                 Color(color_str)
@@ -58,7 +58,7 @@ class Variable(object):
         elif self.type == NUMBER:
             # NUMBER: Requires min/max, optional step/value
             if len(args) < 2:
-                raise DeviceError("NUMBER variable requires min and max values")
+                raise DeviceError("Number variable requires min and max values")
             
             # Validate min/max are valid floats and within bounds
             try:
@@ -108,7 +108,7 @@ class Variable(object):
         elif self.type == TEXT:
             # Validate: value can't be both positional and kwarg
             if args and 'value' in kwargs:
-                raise DeviceError("TEXT value cannot be specified both positionally and as a keyword argument")
+                raise DeviceError("Text value cannot be specified both positionally and as a keyword argument")
             
             # Get value and filter out control characters (newlines, tabs, etc)
             # This ensures the initial/default value is clean
@@ -118,7 +118,7 @@ class Variable(object):
         elif self.type == BOOLEAN:
             # Validate: value can't be both positional and kwarg
             if args and 'value' in kwargs:
-                raise DeviceError("BOOLEAN value cannot be specified both positionally and as a keyword argument")
+                raise DeviceError("Boolean value cannot be specified both positionally and as a keyword argument")
             self.value = kwargs.get('value', args[0] if args else False)
 
         elif self.type == BUTTON:
@@ -139,12 +139,12 @@ class Variable(object):
         elif self.type == SELECT:
             # SELECT: Requires options list, optional value
             if not args:
-                raise DeviceError("SELECT variable requires a list of options")
+                raise DeviceError("Select variable requires a list of options")
             options = args[0]
             if not isinstance(options, (list, tuple)):
-                raise DeviceError("SELECT variable requires a list of options")
+                raise DeviceError("Select variable requires a list of options")
             if not options:
-                raise DeviceError("SELECT variable requires at least one option")
+                raise DeviceError("Select variable requires at least one option")
             
             # Store both original values and their string representations
             self.options = options
@@ -152,7 +152,7 @@ class Variable(object):
             
             # Validate: value can't be both positional and kwarg
             if len(args) > 1 and 'value' in kwargs:
-                raise DeviceError("SELECT value cannot be specified both positionally and as a keyword argument")
+                raise DeviceError("Select value cannot be specified both positionally and as a keyword argument")
             
             # Get value
             self.value = kwargs.get('value', args[1] if len(args) > 1 else options[0])
@@ -165,7 +165,7 @@ class Variable(object):
             # FILE: Optional value and file types
             # Validate: value can't be both positional and kwarg
             if args and 'value' in kwargs:
-                raise DeviceError("FILE path cannot be specified both positionally and as a keyword argument")
+                raise DeviceError("File path cannot be specified both positionally and as a keyword argument")
             
             # Get allowed file types (optional)
             if len(args) > 1 and 'types' in kwargs:
