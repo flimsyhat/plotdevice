@@ -126,6 +126,7 @@ class DashboardRow(NSView):
     def initWithVariable_forDelegate_(self, var, delegate):
         self.initWithFrame_(((0,-999), (200, 30)))
         self.setAutoresizingMask_(NSViewWidthSizable)
+        self.delegate = delegate  # Set delegate early so we can use it for path resolution
 
         label = NSTextField.alloc().init()
         if var.label is not None:
@@ -231,20 +232,23 @@ class DashboardRow(NSView):
             container = NSView.alloc().init()
             
             if var.value:
-                # If we have a path, show only the path control
-                pathControl = NSPathControl.alloc().init()
-                self._configure_path_control(pathControl, NSURL.fileURLWithPath_(var.value))
-                container.addSubview_(pathControl)
-                self.filePathControl = pathControl
+                # Resolve path against script directory
+                display_path = self._resolve_path(var.value)
+                
+                if os.path.exists(display_path):
+                    # If we have a valid path, show the path control
+                    pathControl = NSPathControl.alloc().init()
+                    self._configure_path_control(pathControl, NSURL.fileURLWithPath_(display_path))
+                    container.addSubview_(pathControl)
+                    self.filePathControl = pathControl
+                else:
+                    # If path doesn't exist, show browse button
+                    button = self._create_browse_button()
+                    container.addSubview_(button)
+                    self.fileButton = button
             else:
-                # If no path, show only the browse button
-                button = NSButton.alloc().init()
-                button.setTitle_("Browse...")
-                button.setBezelStyle_(1)
-                button.setFont_(SMALL_FONT)
-                button.cell().setControlSize_(NSSmallControlSize)
-                button.setTarget_(self)
-                button.setAction_(objc.selector(self.browseForFile_, signature=b"v@:@@"))
+                # If no path, show browse button
+                button = self._create_browse_button()
                 container.addSubview_(button)
                 self.fileButton = button
             
@@ -257,7 +261,6 @@ class DashboardRow(NSView):
         self.control = control
         self.button_w = control.frame().size.width if var.type is BUTTON else 0
         self.label_w = label.frame().size.width
-        self.delegate = delegate
         return self
 
     @objc.python_method
@@ -317,7 +320,10 @@ class DashboardRow(NSView):
 
         elif var.type is FILE:
             if var.value:
-                url = NSURL.fileURLWithPath_(var.value)
+                # Resolve path against script directory
+                display_path = self._resolve_path(var.value)
+                
+                url = NSURL.fileURLWithPath_(display_path)
                 if hasattr(self, 'filePathControl'):
                     self._configure_path_control(self.filePathControl, url)
             elif hasattr(self, 'fileButton'):
@@ -507,19 +513,32 @@ class DashboardRow(NSView):
             if var.types:
                 openPanel.setAllowedFileTypes_(var.types)
         
-        # If we have a current file, start in its directory
+        # Get script directory
+        script_dir = None
+        if self.delegate and self.delegate.script.path:
+            script_dir = os.path.dirname(self.delegate.script.path)
+        
+        # Set initial directory
         if hasattr(self, 'filePathControl'):
             current_url = self.filePathControl.URL()
             if current_url:
-                # Get the directory containing the current file
                 directory_url = current_url.URLByDeletingLastPathComponent()
                 openPanel.setDirectoryURL_(directory_url)
+        elif script_dir:
+            # If no current file, start in script directory
+            openPanel.setDirectoryURL_(NSURL.fileURLWithPath_(script_dir))
         
         # Show the panel
         result = openPanel.runModal()
         if result == NSModalResponseOK:
             url = openPanel.URLs()[0]
-            path = url.path()
+            abs_path = url.path()
+            
+            # Try to make path relative to script directory if possible
+            if script_dir and abs_path.startswith(script_dir + os.sep):
+                path = os.path.relpath(abs_path, script_dir)
+            else:
+                path = abs_path
             
             # Remove existing path control if it exists
             if hasattr(self, 'filePathControl'):
@@ -577,6 +596,28 @@ class DashboardRow(NSView):
         components = pathControl.pathComponentCells()
         if len(components) > 2:
             pathControl.setPathComponentCells_(components[-2:])
+
+    @objc.python_method
+    def _resolve_path(self, path):
+        """Helper to resolve paths relative to current script location"""
+        if not path or os.path.isabs(path):
+            return path
+        
+        script_dir = None
+        if self.delegate and self.delegate.script.path:
+            script_dir = os.path.dirname(self.delegate.script.path)
+        
+        return os.path.normpath(os.path.join(script_dir, path)) if script_dir else path
+
+    def _create_browse_button(self):
+        button = NSButton.alloc().init()
+        button.setTitle_("Browse...")
+        button.setBezelStyle_(1)
+        button.setFont_(SMALL_FONT)
+        button.cell().setControlSize_(NSSmallControlSize)
+        button.setTarget_(self)
+        button.setAction_(objc.selector(self.browseForFile_, signature=b"v@:@@"))
+        return button
 
 class DashboardController(NSObject):
     script = IBOutlet()
