@@ -2,6 +2,7 @@
 import re
 from math import floor
 from collections import namedtuple, defaultdict
+import os
 
 from .. import DeviceError
 from ..lib.foundry import fontspec
@@ -12,16 +13,9 @@ from .effects import Effect
 
 _ctx = None
 __all__ = [
-        "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_BACKSPACE", "KEY_TAB", "KEY_ESC",
-        "Variable", "NUMBER", "TEXT", "BOOLEAN","BUTTON",
-        "Grob",
+        "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT",
+        "KEY_BACKSPACE", "KEY_TAB", "KEY_ESC","Grob",
         ]
-
-# var datatypes
-NUMBER = 1
-TEXT = 2
-BOOLEAN = 3
-BUTTON = 4
 
 # ui events
 KEY_UP = 126
@@ -387,77 +381,3 @@ class StyleMixin(Grob):
     @property
     def fill(self):
         return self._fillcolor
-
-re_var = re.compile(r'[A-Za-z_][A-Za-z0-9_]*$')
-re_punct = re.compile(r'([^\!\'\#\%\&\'\(\)\*\+\,\-\.\/\:\;\<\=\>\?\@\[\/\]\^\_\{\|\}\~])$')
-class Variable(object):
-    def __init__(self, name, type, *args, **kwargs):
-        # var(name, TEXT, value, label=)
-        # var(name, BOOLEAN, value, label=)
-        # var(name, NUMBER, value, min, max, step, label=)
-        # var(handler, BUTTON, buttonText, color=, label=)
-        if not re_var.match(name):
-            raise DeviceError('Not a legal variable name: "%s"' % name)
-
-        self.name = name
-        self.type = type or NUMBER
-        self.label = re_punct.sub(r'\1:', kwargs.get('label', name))
-
-        if self.type == NUMBER:
-            attrs = ['value', 'min', 'max', 'step']
-            for attr, val in zip(attrs, args):
-                setattr(self, attr, val)
-            for attr, val in kwargs.items():
-                if attr in attrs:
-                    setattr(self, attr, val)
-
-            self.min = getattr(self, 'min', 0)
-            if hasattr(self, 'value'):
-                self.max = getattr(self, 'max', 100 if 0 <= self.value <= 100 else self.value * 2)
-            else:
-                self.max = getattr(self, 'max', 100)
-            self.min, self.max = min(self.min, self.max), max(self.min, self.max)
-            self.value = getattr(self, 'value', (self.min + self.max) / 2)
-            self.step = getattr(self, 'step', None)
-
-            if self.step:
-                if ((self.max-self.min) / self.step) % 1 > 0:
-                    raise DeviceError("The step size %d doesn't fit evenly into the range %d–%d" % (self.step, self.min, self.max))
-                self.value = self.step * floor((self.value + self.step/2) / self.step)
-
-            small = min(self.min, self.max)
-            big = max(self.min, self.max)
-            if not small <= self.value <= big:
-                raise DeviceError("The value %d doesn't fall with the range %d–%d" % (self.value, self.min, self.max))
-
-        elif self.type == TEXT:
-            self.value = next(iter(args), "hello")
-        elif self.type == BOOLEAN:
-            self.value = bool(next(iter(args), True))
-        elif self.type == BUTTON:
-            # first arg can be a function name or direct reference
-            if callable(name):
-                self.name = name.__name__
-
-            # use value as button text (else use function name)
-            self.value = next(iter(args), name)
-
-            # only add label text if it's provided explicitly
-            if 'label' not in kwargs:
-                self.label = None
-            clr = kwargs.get('color', None)
-            self.color = Color(clr) if clr else None
-
-    def inherit(self, old=None):
-        if old and old.type is self.type:
-            if self.type is NUMBER:
-                self.value = max(self.min, min(self.max, old.value))
-                if self.step:
-                    self.value = self.step * floor((self.value + self.step/2) / self.step)
-            else:
-                self.value = old.value
-
-    @trim_zeroes
-    def __repr__(self):
-        attrs = ['name', 'type', 'value', 'min', 'max', 'step', 'color', 'label']
-        return "Variable(%s)" % ' '.join('%s=%s' % (a,getattr(self, a)) for a in attrs if hasattr(self, a))

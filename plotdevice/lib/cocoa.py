@@ -37,8 +37,8 @@ from AppKit import NSAlert, NSApp, NSAppearance, NSApplication, NSApplicationAct
                    NSImageInterpolationHigh, NSItalicFontMask, NSJPEGFileType, NSJustifiedTextAlignment, \
                    NSKernAttributeName, NSKeyValueObservingOptionNew, NSLayoutManager, NSLeftTextAlignment, \
                    NSLineBreakByWordWrapping, NSLineToBezierPathElement, NSMenu, NSMenuItem, NSMiniControlSize, \
-                   NSMoveToBezierPathElement, NSMutableParagraphStyle, NSNib, NSOffState, NSOnState, \
-                   NSParagraphStyleAttributeName, NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypeTIFF, \
+                   NSModalResponseOK, NSMoveToBezierPathElement, NSMutableParagraphStyle, NSNib, NSOffState, NSOnState, \
+                   NSOpenPanel, NSParagraphStyleAttributeName, NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypeTIFF, \
                    NSPasteboardURLReadingContentsConformToTypesKey, NSPasteboardURLReadingFileURLsOnlyKey, \
                    NSPNGFileType, NSPrintOperation, NSRectFill, NSRectFillUsingOperation, NSResponder, \
                    NSRightTextAlignment, NSSavePanel, NSScreen, NSShadow, NSSlider, NSSmallControlSize, NSSplitView, \
@@ -48,7 +48,8 @@ from AppKit import NSAlert, NSApp, NSAppearance, NSApplication, NSApplicationAct
                    NSTrackingMouseMoved, NSUnboldFontMask, NSUnionRect, NSUnitalicFontMask, NSView, \
                    NSViewFrameDidChangeNotification, NSViewMinXMargin, NSViewWidthSizable, NSWindow, \
                    NSWindowBackingLocationVideoMemory, NSWindowController, NSWindowTabbingModeAutomatic, \
-                   NSWindowTabbingModePreferred, NSWorkspace
+                   NSWindowTabbingModePreferred, NSWorkspace, NSColorWell, NSColorPanel, NSPathControl, \
+                   NSPathComponentCell, NSPopUpButton
 from Foundation import CIAffineTransform, CIColorMatrix, CIContext, CIFilter, CIImage, CIVector, Foundation, NO, \
                        NSAffineTransform, NSAffineTransformStruct, NSAttributedString, NSAutoreleasePool, NSBundle, \
                        NSData, NSDate, NSDateFormatter, NSFileCoordinator, NSFileHandle, \

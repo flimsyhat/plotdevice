@@ -4,6 +4,8 @@ from collections import OrderedDict
 from ..lib.cocoa import *
 from math import floor, ceil
 import objc
+from ..gfx.colors import Color
+from ..gfx.variables import NUMBER, TEXT, BOOLEAN, BUTTON, COLOR, SELECT, FILE
 
 ## classes instantiated by PlotDeviceDocument.xib & PlotDeviceScript.xib
 
@@ -75,15 +77,56 @@ from ..context import NUMBER, TEXT, BOOLEAN, BUTTON
 SMALL_FONT = NSFont.systemFontOfSize_(NSFont.smallSystemFontSize())
 MINI_FONT = NSFont.systemFontOfSize_(NSFont.systemFontSizeForControlSize_(NSMiniControlSize))
 
+# Custom subclass of NSColorWell that keeps the color panel in front
+class FrontColorWell(NSColorWell):
+    def activate_(self, exclusive):
+        result = super(FrontColorWell, self).activate_(exclusive)
+        NSColorPanel.sharedColorPanel().orderFront_(self)
+        return result
+
 class DashboardSwitch(NSSwitch):
     def acceptsFirstMouse_(self, e):
         return True
 
 class DashboardRow(NSView):
-
+    # Base layout measurements, using standard macOS sizes for small controls
+    MARGIN_LEFT = 8         # Left margin of the entire row
+    MARGIN_RIGHT = 8        # Right margin of the entire row
+    ROW_HEIGHT = 22        # Standard small control row height
+    CONTROL_HEIGHT = 19    # Standard small control height
+    LABEL_PADDING = 8      # Space between the label and its control
+    
+    # Fine-tuning offsets for each control type
+    # X offsets adjust horizontal position (negative = left, positive = right)
+    # Y offsets adjust vertical position (negative = down, positive = up)
+    TEXT_X_OFFSET = 2
+    TEXT_Y_OFFSET = 0
+    
+    BOOLEAN_X_OFFSET = 1    # Checkbox position adjustments
+    BOOLEAN_Y_OFFSET = -2
+    
+    NUMBER_X_OFFSET = 1     # Slider position adjustments
+    NUMBER_Y_OFFSET = -1
+    NUMBER_FIELD_Y_OFFSET = 1   # Move number field up slightly to align with slider
+    
+    BUTTON_X_OFFSET = -3    # Button position adjustments
+    BUTTON_Y_OFFSET = -6
+    
+    COLOR_X_OFFSET = 0      # Color well position adjustments
+    COLOR_Y_OFFSET = -1
+    
+    SELECT_X_OFFSET = -1    # Dropdown menu position adjustments
+    SELECT_Y_OFFSET = -1
+    
+    FILE_BUTTON_X_OFFSET = -3   # File browser button position adjustments
+    FILE_BUTTON_Y_OFFSET = -2
+    FILE_PATH_X_OFFSET = -2     # File path display position adjustments
+    FILE_PATH_Y_OFFSET = 0
+    
     def initWithVariable_forDelegate_(self, var, delegate):
         self.initWithFrame_(((0,-999), (200, 30)))
         self.setAutoresizingMask_(NSViewWidthSizable)
+        self.delegate = delegate  # Set delegate early so we can use it for path resolution
 
         label = NSTextField.alloc().init()
         if var.label is not None:
@@ -104,6 +147,9 @@ class DashboardRow(NSView):
             control.setTarget_(self)
             control.setAutoresizingMask_(NSViewWidthSizable)
             control.setDelegate_(self)
+            control.setBordered_(True)
+            control.setDrawsBackground_(True)
+            control.sizeToFit()
             self.addSubview_(control)
 
         elif var.type is BOOLEAN:
@@ -128,21 +174,27 @@ class DashboardRow(NSView):
             control.setAction_(objc.selector(self.numberChanged_, signature=b"v@:@@"))
             self.addSubview_(control)
 
+            # Create a standard text field with border
             num = NSTextField.alloc().init()
-            num.setBordered_(False)
-            num.setEditable_(False)
+            num.setBordered_(True)
+            num.setEditable_(True)
             num.setAutoresizingMask_(NSViewMinXMargin)
             num.setSelectable_(True)
-            num.setDrawsBackground_(False)
+            num.setDrawsBackground_(True)
             num.setFont_(SMALL_FONT)
-
-            # measure all the possible values to decide on the text-field width
-            num_w = self._num_w(var.min, var.max, var.step)
+            num.setDelegate_(self)  # Set delegate to handle text changes
+            
+            # Use a standard width instead of calculating based on possible values
+            standard_num_width = 40
             num.setStringValue_(self._fmt(var.value))
-            num.setFrameSize_((num_w, 18))
+            num.setFrameSize_((standard_num_width, 18))
             self.addSubview_(num)
             self.step = var.step
             self.num = num
+            self.num_w = standard_num_width  # Store the width for layout
+            
+            # Add action to handle text field changes
+            num.setAction_(objc.selector(self.controlTextDidEndEditing_, signature=b"v@:@@"))
 
         elif var.type is BUTTON:
             control = NSButton.alloc().init()
@@ -156,21 +208,67 @@ class DashboardRow(NSView):
             control.setAction_(objc.selector(self.buttonClicked_, signature=b"v@:@@"))
             self.addSubview_(control)
 
+        elif var.type is COLOR:
+            # Create our custom color well that keeps the panel in front
+            control = FrontColorWell.alloc().init()
+            control.setColor_(Color(var.value).nsColor)
+            control.setTarget_(self)
+            control.setAction_(objc.selector(self.colorChanged_, signature=b"v@:@@"))
+            control.sizeToFit()
+            self.addSubview_(control)
+
+        elif var.type is SELECT:
+            control = NSPopUpButton.alloc().init()
+            control.addItemsWithTitles_(var._display_options)
+            control.selectItemWithTitle_(str(var.value))
+            control.setTarget_(self)
+            control.setAction_(objc.selector(self.selectChanged_, signature=b"v@:@@"))
+            control.cell().setControlSize_(NSSmallControlSize)
+            control.sizeToFit()
+            self.addSubview_(control)
+
+        elif var.type is FILE:
+            # Create a container view
+            container = NSView.alloc().init()
+            
+            if var.value:
+                # Resolve path against script directory
+                display_path = self._resolve_path(var.value)
+                
+                if os.path.exists(display_path):
+                    # If we have a valid path, show the path control
+                    pathControl = NSPathControl.alloc().init()
+                    self._configure_path_control(pathControl, NSURL.fileURLWithPath_(display_path))
+                    container.addSubview_(pathControl)
+                    self.filePathControl = pathControl
+                else:
+                    # If path doesn't exist, show browse button
+                    button = self._create_browse_button()
+                    container.addSubview_(button)
+                    self.fileButton = button
+            else:
+                # If no path, show browse button
+                button = self._create_browse_button()
+                container.addSubview_(button)
+                self.fileButton = button
+            
+            control = container
+            self.addSubview_(control)
+
         self.name = var.name
         self.type = var.type
         self.label = label
         self.control = control
         self.button_w = control.frame().size.width if var.type is BUTTON else 0
-        self.num_w = num_w if var.type is NUMBER else 0
         self.label_w = label.frame().size.width
-        self.delegate = delegate
         return self
 
     @objc.python_method
     def _fmt(self, num):
-        s = "{:,.3f}".format(num)
-        s = re.sub(r'\.0+$', '', s)
-        return re.sub(r'(\.[^0])+0*$', r'\1', s)
+        """Format number with up to 3 decimal places"""
+        # Format with 3 decimal places and strip trailing zeros/decimal
+        s = "{:.3f}".format(num).rstrip('0').rstrip('.')
+        return s
 
     @objc.python_method
     def _num_w(self, lo, hi, step):
@@ -205,7 +303,6 @@ class DashboardRow(NSView):
             control.setMaxValue_(var.max)
             control.setMinValue_(var.min)
             self.step = var.step
-            self.num_w = self._num_w(var.min, var.max, var.step)
             self.roundOff()
 
         elif var.type is BUTTON:
@@ -213,19 +310,84 @@ class DashboardRow(NSView):
             self.button_w = control.frame().size.width
             control.setBezelColor_(getattr(var.color, '_rgb', None))
 
+        elif var.type is COLOR:
+            control.setColor_(Color(var.value).nsColor)
+
+        elif var.type is SELECT:
+            control.removeAllItems()
+            control.addItemsWithTitles_(var._display_options)
+            control.selectItemWithTitle_(str(var.value))
+
+        elif var.type is FILE:
+            if var.value:
+                # Resolve path against script directory
+                display_path = self._resolve_path(var.value)
+                
+                url = NSURL.fileURLWithPath_(display_path)
+                if hasattr(self, 'filePathControl'):
+                    self._configure_path_control(self.filePathControl, url)
+            elif hasattr(self, 'fileButton'):
+                self.fileButton.setHidden_(False)
+
     @objc.python_method
     def updateLayout(self, indent, width, row_width, offset):
-        self.setFrame_(((0,  offset), (row_width, 30)))
-        self.label.setFrame_(((10, 0), (indent-15, 18)))
+        # Base row frame
+        self.setFrame_(((0, offset), (row_width, self.ROW_HEIGHT)))
+        
+        # Center label vertically
+        label_height = self.label.frame().size.height
+        label_y = (self.ROW_HEIGHT - label_height) / 2
+        control_y = (self.ROW_HEIGHT - self.CONTROL_HEIGHT) / 2
+        
+        # Position label with right alignment - use label's natural width
+        label_width = self.label_w
+        label_x = indent - label_width
+        self.label.setFrame_(((label_x, label_y), 
+                             (label_width, label_height)))
+        
+        # Available width for controls
+        control_width = width - indent - self.MARGIN_RIGHT
+        
+        # Position control based on type with consistent offsets
         if self.type is TEXT:
-            self.control.setFrame_(((indent, 3),(width - indent, 18)))
+            text_height = self.control.frame().size.height
+            text_y = (self.ROW_HEIGHT - text_height) / 2 + self.TEXT_Y_OFFSET
+            # Adjust width by 1px while maintaining autoresizing behavior
+            frame = ((indent + self.TEXT_X_OFFSET, text_y), 
+                    (control_width - 1, text_height))
+            self.control.setFrame_(frame)
         elif self.type is BOOLEAN:
-            self.control.setFrameOrigin_((indent, 0))
+            self.control.setFrameOrigin_((indent + self.BOOLEAN_X_OFFSET, 
+                                         control_y + self.BOOLEAN_Y_OFFSET))
         elif self.type is NUMBER:
-            self.control.setFrame_(((indent, 1), (width - indent, 18)))
-            self.num.setFrameOrigin_((width + 5, 0))
+            slider_width = control_width - self.num_w - 10
+            self.control.setFrame_(((indent + self.NUMBER_X_OFFSET, control_y + self.NUMBER_Y_OFFSET), 
+                                   (slider_width, self.CONTROL_HEIGHT)))
+            num_y = control_y + self.NUMBER_Y_OFFSET + self.NUMBER_FIELD_Y_OFFSET
+            self.num.setFrameOrigin_((indent + slider_width + 10, num_y))
         elif self.type is BUTTON:
-            self.control.setFrameOrigin_((indent-5, -5))
+            self.control.setFrameOrigin_((indent + self.BUTTON_X_OFFSET, 
+                                         control_y + self.BUTTON_Y_OFFSET))
+        elif self.type is COLOR:
+            self.control.setFrame_(((indent + self.COLOR_X_OFFSET, control_y + self.COLOR_Y_OFFSET), 
+                                   (44, self.CONTROL_HEIGHT)))
+        elif self.type is SELECT:
+            self.control.setFrame_(((indent + self.SELECT_X_OFFSET, control_y + self.SELECT_Y_OFFSET), 
+                                   (control_width, self.CONTROL_HEIGHT)))
+            self.control.cell().setControlSize_(NSSmallControlSize)
+            self.control.setFont_(SMALL_FONT)
+        elif self.type is FILE:
+            # Layout container
+            self.control.setFrame_(((indent, control_y), 
+                                   (control_width, self.CONTROL_HEIGHT)))
+            
+            # Layout the single control (either path or button)
+            if hasattr(self, 'filePathControl'):
+                self.filePathControl.setFrame_(((self.FILE_PATH_X_OFFSET, self.FILE_PATH_Y_OFFSET), 
+                                              (control_width, self.CONTROL_HEIGHT)))
+            elif hasattr(self, 'fileButton'):
+                self.fileButton.setFrame_(((self.FILE_BUTTON_X_OFFSET, self.FILE_BUTTON_Y_OFFSET), 
+                                          (80, self.CONTROL_HEIGHT)))
 
     def numberChanged_(self, sender):
         self.roundOff()
@@ -233,9 +395,52 @@ class DashboardRow(NSView):
             self.delegate.setVariable_to_(self.name, sender.floatValue())
 
     def controlTextDidChange_(self, note):
-        if self.delegate:
-            sender = note.object()
-            self.delegate.setVariable_to_(self.name, sender.stringValue())
+        """Handle changes to text variables as they're typed"""
+        sender = note.object()
+        
+        # Only process for TEXT variables, not NUMBER variables
+        if self.type is TEXT and self.delegate:
+            # Filter out control characters in real-time as user types
+            # This prevents unprintable characters from appearing in the UI
+            value = ''.join(c for c in sender.stringValue() if c.isprintable() or c == ' ')
+            
+            # If we filtered anything out, update the text field to match
+            if value != sender.stringValue():
+                sender.setStringValue_(value)
+            
+            # Send the clean value to be stored
+            self.delegate.setVariable_to_(self.name, value)
+
+    def controlTextDidEndEditing_(self, notification):
+        """Handle when user finishes editing text in a text field"""
+        sender = notification.object()
+        
+        # Check if this is our number field
+        if hasattr(self, 'num') and sender == self.num:
+            try:
+                # Try to parse the value as a float
+                value_str = sender.stringValue()
+                value = float(value_str.replace(',', ''))
+                
+                # Constrain to min/max
+                value = max(self.control.minValue(), min(self.control.maxValue(), value))
+                
+                # Apply step if needed
+                if self.step:
+                    value = self.step * floor((value + self.step/2) / self.step)
+                
+                # Update the slider
+                self.control.setFloatValue_(value)
+                
+                # Update the text field with properly formatted value
+                sender.setStringValue_(self._fmt(value))
+                
+                # Notify delegate
+                if self.delegate:
+                    self.delegate.setVariable_to_(self.name, value)
+            except ValueError:
+                # If parsing fails, reset to current slider value
+                sender.setStringValue_(self._fmt(self.control.floatValue()))
 
     def booleanChanged_(self, sender):
         if self.delegate:
@@ -245,26 +450,247 @@ class DashboardRow(NSView):
         if self.delegate:
             self.delegate.callHandler_(self.name)
 
+    def colorChanged_(self, sender):
+        if self.delegate:
+            # Make sure color panel stays in front of variable panel
+            NSColorPanel.sharedColorPanel().orderFront_(self)
+            
+            color = sender.color()
+            
+            # Try to get RGB values first
+            try:
+                r, g, b, a = color.getRed_green_blue_alpha_(None, None, None, None)
+                hex_color = "#{:02x}{:02x}{:02x}".format(
+                    int(r * 255), 
+                    int(g * 255), 
+                    int(b * 255)
+                )
+            except ValueError:
+                # If RGB fails, try grayscale
+                try:
+                    w, a = color.getWhite_alpha_(None, None)
+                    hex_color = "#{:02x}{:02x}{:02x}".format(
+                        int(w * 255),
+                        int(w * 255),
+                        int(w * 255)
+                    )
+                except ValueError:
+                    # If grayscale fails, try CMYK
+                    try:
+                        c, m, y, k, a = color.getCyan_magenta_yellow_black_alpha_(None, None, None, None, None)
+                        # Convert to RGB first (using Color class's conversion)
+                        rgb_color = Color(CMYK, c, m, y, k)
+                        r, g, b = rgb_color.rgba[:3]
+                        hex_color = "#{:02x}{:02x}{:02x}".format(
+                            int(r * 255),
+                            int(g * 255),
+                            int(b * 255)
+                        )
+                    except:
+                        # If all conversions fail, default to black
+                        hex_color = "#000000"
+            
+            self.delegate.setVariable_to_(self.name, hex_color)
+
+    def selectChanged_(self, sender):
+        if self.delegate:
+            # Get the selected item's index
+            idx = sender.indexOfSelectedItem()
+            # Get the original value from the options list using delegate
+            original_value = self.delegate.script.vm.params[self.name].options[idx]
+            self.delegate.setVariable_to_(self.name, original_value)
+
+    def browseForFile_(self, sender):
+        # Create open panel
+        openPanel = NSOpenPanel.openPanel()
+        openPanel.setCanChooseFiles_(True)
+        openPanel.setCanChooseDirectories_(False)
+        openPanel.setAllowsMultipleSelection_(False)
+        
+        # Set allowed file types if specified
+        if self.delegate and hasattr(self.delegate, 'script'):
+            var = self.delegate.script.vm.params[self.name]
+            if var.types:
+                openPanel.setAllowedFileTypes_(var.types)
+        
+        # Get script directory
+        script_dir = None
+        if self.delegate and self.delegate.script.path:
+            script_dir = os.path.dirname(self.delegate.script.path)
+        
+        # Set initial directory
+        if hasattr(self, 'filePathControl'):
+            current_url = self.filePathControl.URL()
+            if current_url:
+                directory_url = current_url.URLByDeletingLastPathComponent()
+                openPanel.setDirectoryURL_(directory_url)
+        elif script_dir:
+            # If no current file, start in script directory
+            openPanel.setDirectoryURL_(NSURL.fileURLWithPath_(script_dir))
+        
+        # Show the panel
+        result = openPanel.runModal()
+        if result == NSModalResponseOK:
+            url = openPanel.URLs()[0]
+            abs_path = url.path()
+            
+            # Try to make path relative to script directory if possible
+            if script_dir and abs_path.startswith(script_dir + os.sep):
+                path = os.path.relpath(abs_path, script_dir)
+            else:
+                path = abs_path
+            
+            # Remove existing path control if it exists
+            if hasattr(self, 'filePathControl'):
+                self.filePathControl.removeFromSuperview()
+            
+            # Remove the button if it exists
+            if hasattr(self, 'fileButton'):
+                self.fileButton.removeFromSuperview()
+                del self.fileButton
+            
+            # Create and add the path control
+            pathControl = NSPathControl.alloc().init()
+            self._configure_path_control(pathControl, url)
+            pathControl.setFrame_(((0, 0), (self.control.frame().size.width, self.CONTROL_HEIGHT)))
+            self.control.addSubview_(pathControl)
+            self.filePathControl = pathControl
+            
+            if self.delegate:
+                self.delegate.setVariable_to_(self.name, path)
+
+    @objc.python_method
+    def _configure_path_control(self, pathControl, url):
+        """Configure an NSPathControl with our standard settings"""
+        # Set size and style
+        pathControl.cell().setControlSize_(NSSmallControlSize)
+        pathControl.setFont_(SMALL_FONT)
+        
+        # Set URL
+        pathControl.setURL_(url)
+        pathControl.setEditable_(False)
+        pathControl.setPathStyle_(0)  # NSPathStyleStandard
+        pathControl.setBackgroundColor_(NSColor.clearColor())
+        
+        # Configure component cells
+        components = pathControl.pathComponentCells()
+        if len(components) > 2:
+            last_components = components[-2:]
+            for cell in last_components:
+                cell.setBordered_(False)
+                cell.setBackgroundStyle_(0)
+                cell.setFont_(SMALL_FONT)
+                cell.setControlSize_(NSSmallControlSize)
+            pathControl.setPathComponentCells_(last_components)
+        
+        # Add tooltip for full path
+        pathControl.setToolTip_(url.path())
+        
+        # Make it clickable to choose a file
+        pathControl.setTarget_(self)
+        pathControl.setAction_(objc.selector(self.browseForFile_, signature=b"v@:@@"))
+
+    @objc.python_method
+    def _truncate_path_components(self, pathControl):
+        """Show only the last folder and filename in the path control"""
+        components = pathControl.pathComponentCells()
+        if len(components) > 2:
+            pathControl.setPathComponentCells_(components[-2:])
+
+    @objc.python_method
+    def _resolve_path(self, path):
+        """Helper to resolve paths relative to current script location"""
+        if not path or os.path.isabs(path):
+            return path
+        
+        script_dir = None
+        if self.delegate and self.delegate.script.path:
+            script_dir = os.path.dirname(self.delegate.script.path)
+        
+        return os.path.normpath(os.path.join(script_dir, path)) if script_dir else path
+
+    def _create_browse_button(self):
+        button = NSButton.alloc().init()
+        button.setTitle_("Browse...")
+        button.setBezelStyle_(1)
+        button.setFont_(SMALL_FONT)
+        button.cell().setControlSize_(NSSmallControlSize)
+        button.setTarget_(self)
+        button.setAction_(objc.selector(self.browseForFile_, signature=b"v@:@@"))
+        return button
+
 class DashboardController(NSObject):
     script = IBOutlet()
     panel = IBOutlet()
 
+    # Layout constants
+    PANEL_TOP_PADDING = 5    # Space at top of panel
+    PANEL_BOTTOM_PADDING = 25 # Space at bottom of panel
+    MIN_CONTROL_WIDTH = 200   # Minimum width for controls
+    MAX_WIDTH_MULTIPLIER = 5  # Maximum panel width multiplier
+    TITLE_BAR_HEIGHT = 38    # Height of window title bar
+
     def awakeFromNib(self):
         self.panel.contentView().setFlipped_(True)
         self.rows = OrderedDict()
-        self.positioned = False
+        
+        # Register for script lifecycle notifications
+        nc = NSNotificationCenter.defaultCenter()
+        self._observers = []
+        self._observers.extend([
+            (nc, nc.addObserver_selector_name_object_(
+                self, "scriptDidReload:", 
+                "ScriptDidReloadNotification", 
+                None
+            ))
+        ])
+
+    def scriptDidReload_(self, notification):
+        """Restore connections after script reload"""
+        self.restoreConnections()
+        self.updateInterface()
+
+    @objc.python_method
+    def restoreConnections(self):
+        """Restore delegate connections for all rows"""
+        for row in self.rows.values():
+            if row and row.control:  # Safety check for valid objects
+                row.delegate = self
+                if row.type is TEXT:
+                    row.control.setDelegate_(row)
 
     def shutdown(self):
-        self.panel.close()
-        for row in self.rows.values():
-            row.delegate = None
-            if row.type is TEXT:
-                row.control.setDelegate_(None)
+        # Clean up notification observers
+        if hasattr(self, '_observers'):
+            nc = NSNotificationCenter.defaultCenter()
+            for observer in self._observers:
+                nc.removeObserver_(observer)
+            self._observers = []
+        
+        # Clean up UI elements
+        if hasattr(self, 'panel'):
+            self.panel.close()
+        
+        if hasattr(self, 'rows'):
+            for row in self.rows.values():
+                if row and row.control:
+                    row.delegate = None
+                    if row.type is TEXT:
+                        row.control.setDelegate_(None)
+            self.rows.clear()
 
     def setVariable_to_(self, name, val):
+        # Add safety check for variable existence
+        if name not in self.script.vm.params:
+            NSLog("Variable %s no longer exists", name)
+            return
+
         var = self.script.vm.params[name]
+        old_val = var.value  # Track old value
         var.value = val
-        if self.script.animationTimer is None:
+        
+        # Only run script if value actually changed and not animating
+        if old_val != val and self.script.animationTimer is None:
             self.script.runScript()
 
     def callHandler_(self, name):
@@ -277,67 +703,88 @@ class DashboardController(NSObject):
             except DeviceError as e:
                 return self.script.crash()
 
-
     @objc.python_method
     def updateInterface(self):
         params = self.script.vm.params
-        for name, widget in self.rows.items():
+        
+        # Remove old variable widgets
+        for name, widget in list(self.rows.items()):
             if name not in params:
                 widget.removeFromSuperview()
-                self.script.vm.namespace.pop(name)
 
+        # Update existing and add new variables
         new_rows = OrderedDict()
         for name, var in params.items():
-            try:
-                new_rows[name] = self.rows[name]
-                new_rows[name].updateConfig(var)
-            except KeyError:
-                new_rows[name] = DashboardRow.alloc().initWithVariable_forDelegate_(var, self)
-                self.panel.contentView().addSubview_(new_rows[name])
+            row = self.rows.get(name)
+            if row is None:
+                row = DashboardRow.alloc().initWithVariable_forDelegate_(var, self)
+                self.panel.contentView().addSubview_(row)
+            else:
+                row.updateConfig(var)
+            new_rows[name] = row
         self.rows = new_rows
 
         if not self.rows:
             self.panel.orderOut_(None)
+            return
+
+        # Set the title of the parameter panel
+        self.panel.setTitle_(self.script.window().title())
+
+        # Calculate panel dimensions using DashboardRow constants
+        label_width = max(row.label_w for row in self.rows.values())
+        button_width = max(row.button_w for row in self.rows.values())
+        number_width = max((row.num_w for row in self.rows.values() if row.type is NUMBER), default=0)
+        
+        # Calculate total heights and widths
+        total_height = (len(self.rows) * DashboardRow.ROW_HEIGHT) + self.PANEL_TOP_PADDING + self.PANEL_BOTTOM_PADDING
+        control_width = max(button_width, self.MIN_CONTROL_WIDTH)
+        total_width = (
+            label_width + 
+            DashboardRow.LABEL_PADDING + 
+            control_width
+        )
+
+        # Set panel constraints
+        self.panel.setMinSize_((total_width, total_height))
+        self.panel.setMaxSize_((total_width * self.MAX_WIDTH_MULTIPLIER, total_height))
+
+        # Get current panel frame and calculate new position
+        current_frame = self.panel.frame()
+        
+        # If panel hasn't been positioned yet (origin is 0,0)
+        if current_frame.origin.x == 0 and current_frame.origin.y == 0:
+            win = self.script.window().frame()
+            screen = self.script.window().screen().visibleFrame()
+            
+            # Try to position to right of window
+            if win.origin.x + win.size.width + total_width < screen.size.width:
+                pOrigin = (win.origin.x + win.size.width, 
+                          win.origin.y + win.size.height - total_height - self.TITLE_BAR_HEIGHT)
+            # Try to position to left of window
+            elif win.origin.x - total_width > 0:
+                pOrigin = (win.origin.x - total_width, 
+                          win.origin.y + win.size.height - total_height - self.TITLE_BAR_HEIGHT)
+            # Fall back to overlapping position
+            else:
+                pOrigin = (win.origin.x + win.size.width - total_width - DashboardRow.MARGIN_RIGHT,
+                          win.origin.y + DashboardRow.MARGIN_LEFT)
         else:
-            # Set the title of the parameter panel to the title of the window
-            self.panel.setTitle_(self.script.window().title())
+            # Keep current position but adjust for height change
+            pOrigin = current_frame.origin
+            pOrigin.y -= total_height - current_frame.size.height
 
-            # recalculate the layout
-            (pOrigin, pSize) = self.panel.frame()
-            label_w = max([v.label_w for v in self.rows.values()])
-            button_w = max([v.button_w for v in self.rows.values()])
-            num_w = max([v.num_w for v in self.rows.values()])
-            ph = len(self.rows) * 30 + 30
-            pw = label_w + 15 + max(button_w, 200) + num_w
-            col = label_w + 15
+        self.panel.setFrame_display_animate_((pOrigin, (total_width, total_height)), True, True)
 
-            self.panel.setMinSize_( (pw, ph))
-            self.panel.setMaxSize_( (pw * 5, ph))
+        # Update row layouts
+        indent = label_width + DashboardRow.LABEL_PADDING
+        for idx, row in enumerate(self.rows.values()):
+            # Add top padding to initial offset for each row
+            row_offset = self.PANEL_TOP_PADDING + (idx * DashboardRow.ROW_HEIGHT)
+            row.updateLayout(indent, total_width - DashboardRow.MARGIN_RIGHT,
+                    total_width, row_offset)
 
-            needs_resize = pSize.width < pw or pSize.height != ph
-            pw = max(pw, pSize.width)
-
-            if not self.positioned:
-                win = self.script.window().frame()
-                screen = self.script.window().screen().visibleFrame()
-                if win.origin.x + win.size.width + pw < screen.size.width:
-                    pOrigin = (win.origin.x + win.size.width, win.origin.y + win.size.height - ph - 38)
-                elif win.origin.x - pw > 0:
-                    pOrigin = (win.origin.x - pw, win.origin.y + win.size.height - ph - 38)
-                else:
-                    pOrigin = (win.origin.x + win.size.width - pw - 15, win.origin.y + 15)
-                self.panel.setFrame_display_animate_( (pOrigin, (pw,ph)), True, True )
-                self.positioned = True
-
-            elif needs_resize:
-                pOrigin.y -= ph-pSize.height
-                self.panel.setFrame_display_animate_( (pOrigin, (pw,ph)), True, True )
-
-            # reposition the elements of each row to fit the new panel size and row contents
-            for idx, v in enumerate(self.rows.values()):
-                v.updateLayout(col, pw - 10 - num_w, pw, idx*30)
-
-            self.panel.orderFront_(None)
+        self.panel.orderFront_(None)
 
 
 

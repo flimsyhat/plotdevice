@@ -119,3 +119,6 @@ class PlotDeviceAppDelegate(NSObject):
     def applicationWillTerminate_(self, note):
         import atexit
         atexit._run_exitfuncs()
+
+    def applicationSupportsSecureRestorableState_(self, app):
+        return True
