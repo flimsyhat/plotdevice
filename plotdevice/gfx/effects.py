@@ -1,7 +1,7 @@
 # encoding: utf-8
 import os
 import re
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from ..lib.cocoa import *
 
 from plotdevice import DeviceError
@@ -86,136 +86,187 @@ class Frob(object):
         return self._grobs or []
 
 class Effect(Frob):
+    """Manages graphical effects (blend modes, alpha, and shadows) in the graphics context.
+    
+    Effects can be used either as a context manager:
+        with Effect(blend='multiply', alpha=0.5):
+            # drawing code here
+    
+    Or applied directly:
+        effect = Effect(shadow=(0,10,5))
+        effect.append(some_grob)
+    """
     kwargs = ('blend','alpha','shadow')
 
     def __init__(self, *args, **kwargs):
         self._fx = {}
-
-        if kwargs.pop('rollback', False):
-            self._rollback = {eff:getattr(_ctx._effects, eff) for eff in kwargs}
-
+        # Initialize effect settings (ignoring any rollback flag)
         for eff, val in kwargs.items():
-            self._fx[eff] = Effect._validate(eff, val)
+            if eff != 'rollback':
+                self._fx[eff] = self._validate(eff, val)
 
     def __repr__(self):
-        return 'Effect(%r)'%self._fx
+        return "Effect(%r)" % self._fx
 
     def __enter__(self):
-        # if this isn't the first pass through the context manager, snapshot the current
-        # state for all the effects we're changing so they can be restored in __exit__
-        if not hasattr(self, '_rollback'):
-            self._rollback = {eff:val for eff,val in _ctx._effects._fx.items() if eff in self._fx}
-
-        # concat ourseves as a new canvas container
+        # Snapshot current state for the effects being modified
+        self._rollback = {eff: getattr(_ctx._effects, eff, None) for eff in self._fx}
         _ctx.canvas.push(self)
-
-        # reset the global per-object effects state within the block (since the effects
-        # will be applied to a transparency layer encapsulating all drawing)
+        # Remove current global effect settings for the keys we're changing
         for eff in self._fx:
             _ctx._effects._fx.pop(eff, None)
-        return
+        return self
 
-    def __exit__(self, type, value, tb):
-        # step back out to the pre-effects canvas container
+    def __exit__(self, exc_type, exc_value, traceback):
         _ctx.canvas.pop()
-
-        # restore the per-object effects state to what it was before the `with` block
+        # Restore the previous state
         for eff, val in self._rollback.items():
             setattr(_ctx._effects, eff, val)
         del self._rollback
 
-    def set(self, *effs):
-        """Add compositing effects to the drawing context"""
+    def apply_alpha(self):
+        """Apply alpha settings to the current graphics context.
+        
+        Returns True if alpha was applied, False otherwise.
+        """
+        if 'alpha' in self._fx:
+            CGContextSetAlpha(_cg_port(), self._fx['alpha'])
+            return True
+        return False
 
-        # apply effects specified in the args (or all by default)
-        if not effs:
-            effs = Effect.kwargs
+    def apply_blend(self):
+        """Apply blend mode settings to the current graphics context.
+        
+        Returns True if blend mode was applied, False otherwise.
+        """
+        if 'blend' in self._fx:
+            CGContextSetBlendMode(_cg_port(), _BLEND[self._fx['blend']])
+            return True
+        return False
 
-        fx = {k:v for k,v in self._fx.items() if k in effs}
-        if 'alpha' in fx:
-            CGContextSetAlpha(_cg_port(), fx['alpha']);
-        if 'blend' in fx:
-            CGContextSetBlendMode(_cg_port(), _BLEND[fx['blend']])
-        if 'shadow' in fx:
-            shadow = Shadow(None) if fx['shadow'] is None else fx['shadow']
-            shadow._nsShadow.set() # don't mess with cg for shadows
+    def apply_blend_alpha(self):
+        """Apply both blend and alpha settings to the current graphics context.
+        
+        These effects share a transparency layer and must be applied together.
+        Returns True if either effect was applied.
+        """
+        blend_applied = self.apply_blend()
+        alpha_applied = self.apply_alpha()
+        return blend_applied or alpha_applied
 
-        # i *think* it's better to skip the transparency layer when only blending,
-        # but am bracing for the discovery that it's not...
-        return bool(fx) and fx.keys() != ('blend',)
-        # return bool(fx) # return whether any state was just changed
+    def apply_shadow(self):
+        """Apply shadow settings to the current graphics context.
+        
+        Shadow requires its own transparency layer separate from blend/alpha.
+        Returns True if shadow was applied.
+        """
+        if 'shadow' in self._fx:
+            shadow = Shadow(None) if self._fx['shadow'] is None else self._fx['shadow']
+            shadow._nsShadow.set()  # Shadow is applied via Cocoa API
+            return True
+        return False
 
     @contextmanager
     def applied(self):
-        """Apply compositing effects (if any) to any drawing inside the `with` block"""
-        if self._fx:
-            if self.set('blend', 'alpha'):
-                with _cg_layer():
-                    if not self.set('shadow'):
-                        yield # if there's no shadow, we don't need a second layer
-                    else:
-                        with _cg_layer():
-                            yield # if there is, we do
-            else:
-                # no blend or alpha changes, but since _fx exists there must be a shadow
-                self.set('shadow')
-                with _cg_layer():
-                    yield
-        else:
-            # nothing to be done
+        """Apply effects within appropriate transparency layers.
+        
+        The effects are applied in a specific order and with specific layer requirements:
+        - blend/alpha effects are applied together and require their own transparency layer
+        - shadow requires its own transparency layer
+        - if only shadow is present, it gets a single layer
+        
+        Layer structure:
+        1. blend/alpha layer (if either effect is present)
+            2. shadow layer (if shadow is present)
+                --> drawing occurs here <--
+        """
+        if not self._fx:
+            yield  # no effects to apply
+            return
+
+        with ExitStack() as stack:
+            # First check if we need a layer for blend/alpha effects
+            # These effects work together and share a transparency layer
+            if self.apply_blend_alpha():
+                stack.enter_context(_cg_layer())
+            
+            # If we also have a shadow, it needs its own nested layer
+            # This ensures the shadow renders correctly with the blend/alpha effects
+            if self.apply_shadow():
+                stack.enter_context(_cg_layer())
+        
+            # All effects are now applied and layers are set up
+            # Drawing will occur within the innermost active layer
             yield
 
     def copy(self):
-        new = Effect()
-        new._fx = dict(self._fx)
-        return new
+        new_effect = Effect()
+        new_effect._fx = self._fx.copy()
+        return new_effect
 
     @classmethod
-    def _validate(self, eff, val):
+    def _validate(cls, eff, val):
+        """Validate and normalize effect values.
+        
+        Args:
+            eff: Effect type ('blend', 'alpha', or 'shadow')
+            val: Value to validate
+            
+        Returns:
+            Normalized value if valid
+            
+        Raises:
+            DeviceError: If value is invalid for the effect type
+        """
         if val is None:
-            pass
-        elif eff=='alpha' and not (numlike(val) and 0<=val<=1):
-            badalpha = 'alpha() value must be a number between 0 and 1.0'
-            raise DeviceError(badalpha)
-        elif eff=='blend':
-            val = re.sub(r'[_\- ]','', val).lower()
+            return None
+        elif eff == 'alpha':
+            if not (numlike(val) and 0 <= val <= 1):
+                raise DeviceError("alpha() value must be a number between 0 and 1.0")
+        elif eff == 'blend':
+            val = re.sub(r'[_\- ]', '', val).lower()
             if val not in _BLEND:
-                badblend = '"%s" is not a recognized blend mode.\nUse one of:\n%s'%(val, BLEND_MODES)
-                raise DeviceError(badblend)
-        elif eff=='shadow':
+                raise DeviceError('"%s" is not a recognized blend mode.\nUse one of:\n%s'
+                                  % (val, BLEND_MODES))
+        elif eff == 'shadow':
             if isinstance(val, Shadow):
-                val = val.copy()
+                return val.copy()
             else:
-                val = Shadow(*val)
-
+                return Shadow(*val)
         return val
 
-    def _get_alpha(self):
+    @property
+    def alpha(self):
         return self._fx.get('alpha', 1.0)
-    def _set_alpha(self, a):
+
+    @alpha.setter
+    def alpha(self, a):
         if a is None:
             self._fx.pop('alpha', None)
         else:
-            self._fx['alpha'] = Effect._validate('alpha', a)
-    alpha = property(_get_alpha, _set_alpha)
+            self._fx['alpha'] = self._validate('alpha', a)
 
-    def _get_blend(self):
+    @property
+    def blend(self):
         return self._fx.get('blend', 'normal')
-    def _set_blend(self, mode):
+
+    @blend.setter
+    def blend(self, mode):
         if mode is None:
             self._fx.pop('blend', None)
         else:
-            self._fx['blend'] = Effect._validate('blend', mode)
-    blend = property(_get_blend, _set_blend)
+            self._fx['blend'] = self._validate('blend', mode)
 
-    def _get_shadow(self):
+    @property
+    def shadow(self):
         return self._fx.get('shadow', None)
-    def _set_shadow(self, spec):
+
+    @shadow.setter
+    def shadow(self, spec):
         if spec is None:
             self._fx.pop('shadow', None)
         else:
-            self._fx['shadow'] = Effect._validate('shadow', spec)
-    shadow = property(_get_shadow, _set_shadow)
+            self._fx['shadow'] = self._validate('shadow', spec)
 
 class Shadow(object):
     kwargs = ('color','blur','offset')
