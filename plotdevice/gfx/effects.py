@@ -348,27 +348,52 @@ class Shadow(object):
         self._nsShadow.setShadowOffset_((x,-y))
 
 class Stencil(Frob):
+    """Manages stencil/clipping mask effects in the graphics context.
+    
+    A stencil creates a mask that determines which areas will be drawn.
+    It can be created from different source types:
+    
+    Text:
+        Uses the text path as a clipping mask
+    Bezier:
+        Uses the path as a clipping mask
+    Image:
+        Uses image data as a clipping mask, using either:
+        - alpha channel (if available)
+        - luminance/darkness (if no alpha)
+        
+    Args:
+        stencil: Source object (Text, Bezier, or Image)
+        invert: Whether to invert the mask (default: False)
+        channel: For images, which channel to use ('alpha', 'black', etc)
+    """
     def __init__(self, stencil, invert=False, channel=None):
         from .text import Text
         from .bezier import Bezier
         from .image import Image
-        if isinstance(stencil, Text):
-            self.path = stencil.path
-            self.evenodd = invert
-        if isinstance(stencil, Bezier):
-            self.path = stencil.copy()
+
+        if isinstance(stencil, (Text, Bezier)):
+            # for Text/Bezier stencils, we use the path as a clipping mask
+            # the evenodd flag determines whether to use even-odd fill rule:
+            # - when False (default): Areas inside the path are visible
+            # - when True (inverted): Areas outside the path are visible
+            self.path = stencil.path if isinstance(stencil, Text) else stencil.copy()
             self.evenodd = invert
         elif isinstance(stencil, Image):
-            # default to using alpha if available and darkness if not
-            if not channel:
-                channel = 'alpha' if stencil._nsBitmap.hasAlpha() else 'black'
-            if channel=='black':
-                invert = not invert
-            self.channel = channel
-            self.invert = invert
             self.bmp = stencil
+            # default to using alpha if available and darkness if not
+            self.channel = channel or ('alpha' if stencil._nsBitmap.hasAlpha() else 'black')
+            # for 'black' channel we invert since we want dark areas to show through
+            # (opposite of alpha/rgb channels where white/opaque areas show through)
+            self.invert = invert if self.channel != 'black' else not invert
+
+    def __repr__(self):
+        if hasattr(self, 'path'):
+            return "Stencil(path, invert=%r)" % self.evenodd
+        return "Stencil(image, channel=%r, invert=%r)" % (self.channel, self.invert)
 
     def set(self):
+        """Apply the stencil to the current graphics context."""
         port = _cg_port()
 
         if hasattr(self, 'path'):
@@ -392,13 +417,17 @@ class Stencil(Frob):
             ci_ctx = CIContext.contextWithOptions_(None)
             maskRef = ci_ctx.createCGImage_fromRect_(greyscale, ((0,0), self.bmp.size))
 
-            # turn the image into an ‘imagemask’ cg-image
-            cg_mask = CGImageMaskCreate(CGImageGetWidth(maskRef),
-                                        CGImageGetHeight(maskRef),
-                                        CGImageGetBitsPerComponent(maskRef),
-                                        CGImageGetBitsPerPixel(maskRef),
-                                        CGImageGetBytesPerRow(maskRef),
-                                        CGImageGetDataProvider(maskRef), None, False);
+            # turn the image into an 'imagemask' cg-image
+            cg_mask = CGImageMaskCreate(
+                CGImageGetWidth(maskRef),
+                CGImageGetHeight(maskRef),
+                CGImageGetBitsPerComponent(maskRef),
+                CGImageGetBitsPerPixel(maskRef),
+                CGImageGetBytesPerRow(maskRef),
+                CGImageGetDataProvider(maskRef), 
+                None, 
+                False
+            )
 
             # the mask is sitting at (0,0) until transformed to screen coords
             xf = self.bmp._screen_transform
@@ -408,6 +437,7 @@ class Stencil(Frob):
 
     @contextmanager
     def applied(self):
+        """Apply the stencil effect within a context manager block."""
         self.set()
         yield
 
