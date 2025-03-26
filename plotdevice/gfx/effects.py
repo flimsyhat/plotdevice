@@ -269,18 +269,28 @@ class Effect(Frob):
             self._fx['shadow'] = self._validate('shadow', spec)
 
 class Shadow(object):
-    kwargs = ('color','blur','offset')
+    """Manages shadow effects in the graphics context.
+    
+    A shadow can be configured with:
+    - color: Color of the shadow (defaults to black at 75% opacity)
+    - blur: Blur radius of the shadow (defaults to 10 or 0 if color alpha is 0)
+    - offset: Shadow offset as (x,y) or single value for both (defaults to blur/2.0)
+    """
+    kwargs = ('color', 'blur', 'offset')
 
     def __init__(self, *args, **kwargs):
         super(Shadow, self).__init__()
+        self._nsShadow = NSShadow.alloc().init()
+        
         if args and isinstance(args[0], Shadow):
+            # Copy constructor
             self._nsShadow = _copy_attr(args[0]._nsShadow)
             for attr, val in kwargs.items():
-                if attr not in Shadow.kwargs: continue
-                setattr(self, attr, val)
+                if attr in self.kwargs:
+                    setattr(self, attr, val)
         else:
-            self._nsShadow = NSShadow.alloc().init()
-            for attr, val in zip(Shadow.kwargs, args):
+            # Normal initialization
+            for attr, val in zip(self.kwargs, args):
                 kwargs.setdefault(attr, val)
 
             self.color = Color(kwargs.get('color', ('#000', .75)))
@@ -298,9 +308,13 @@ class Shadow(object):
     def copy(self):
         return Shadow(self)
 
-    def _get_color(self):
+    @property
+    def color(self):
+        """The color of the shadow."""
         return Color(self._nsShadow.shadowColor())
-    def _set_color(self, spec):
+
+    @color.setter
+    def color(self, spec):
         if isinstance(spec, Color):
             self._nsShadow.setShadowColor_(spec.nsColor)
         elif spec is None:
@@ -309,24 +323,29 @@ class Shadow(object):
             if not isinstance(spec, (tuple,list)):
                 spec = tuple([spec])
             self._nsShadow.setShadowColor_(Color(*spec).nsColor)
-    color = property(_get_color, _set_color)
 
-    def _get_blur(self):
+    @property
+    def blur(self):
+        """The blur radius of the shadow."""
         return self._nsShadow.shadowBlurRadius()
-    def _set_blur(self, blur):
-        self._nsShadow.setShadowBlurRadius_(blur)
-    blur = property(_get_blur, _set_blur)
 
-    def _get_offset(self):
+    @blur.setter
+    def blur(self, blur):
+        self._nsShadow.setShadowBlurRadius_(blur)
+
+    @property
+    def offset(self):
+        """The offset of the shadow as a Point(x,y)."""
         x,y = self._nsShadow.shadowOffset()
         return Point(x,-y)
-    def _set_offset(self, offset):
+
+    @offset.setter
+    def offset(self, offset):
         if numlike(offset):
             x = y = offset
         else:
             x,y = offset
         self._nsShadow.setShadowOffset_((x,-y))
-    offset = property(_get_offset, _set_offset)
 
 class Stencil(Frob):
     def __init__(self, stencil, invert=False, channel=None):
