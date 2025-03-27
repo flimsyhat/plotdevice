@@ -13,49 +13,58 @@ from . import _cg_context, _cg_layer, _cg_port
 _ctx = None
 __all__ = ("Effect", "Shadow", "Stencil",)
 
-# blend modes
-_BLEND=dict(
-    # basics
-    normal=kCGBlendModeNormal,
-    clear=kCGBlendModeClear,
-    copy=kCGBlendModeCopy,
+# Blend modes organized by category
+_BLEND = {
+    # Basic blend modes
+    'normal': kCGBlendModeNormal,
+    'clear': kCGBlendModeClear,
+    'copy': kCGBlendModeCopy,
 
-    # pdf
-    multiply=kCGBlendModeMultiply,
-    screen=kCGBlendModeScreen,
-    overlay=kCGBlendModeOverlay,
-    darken=kCGBlendModeDarken,
-    lighten=kCGBlendModeLighten,
-    colordodge=kCGBlendModeColorDodge,
-    colorburn=kCGBlendModeColorBurn,
-    softlight=kCGBlendModeSoftLight,
-    hardlight=kCGBlendModeHardLight,
-    difference=kCGBlendModeDifference,
-    exclusion=kCGBlendModeExclusion,
-    hue=kCGBlendModeHue,
-    saturation=kCGBlendModeSaturation,
-    color=kCGBlendModeColor,
-    luminosity=kCGBlendModeLuminosity,
+    # Standard blend modes
+    'multiply': kCGBlendModeMultiply,
+    'screen': kCGBlendModeScreen,
+    'overlay': kCGBlendModeOverlay,
+    'darken': kCGBlendModeDarken,
+    'lighten': kCGBlendModeLighten,
+    'colordodge': kCGBlendModeColorDodge,
+    'colorburn': kCGBlendModeColorBurn,
+    'softlight': kCGBlendModeSoftLight,
+    'hardlight': kCGBlendModeHardLight,
+    'difference': kCGBlendModeDifference,
+    'exclusion': kCGBlendModeExclusion,
 
-    # nextstep
-    sourcein=kCGBlendModeSourceIn,
-    sourceout=kCGBlendModeSourceOut,
-    sourceatop=kCGBlendModeSourceAtop,
-    destinationover=kCGBlendModeDestinationOver,
-    destinationin=kCGBlendModeDestinationIn,
-    destinationout=kCGBlendModeDestinationOut,
-    destinationatop=kCGBlendModeDestinationAtop,
-    xor=kCGBlendModeXOR,
-    plusdarker=kCGBlendModePlusDarker,
-    pluslighter=kCGBlendModePlusLighter,
-)
+    # Color component blend modes
+    'hue': kCGBlendModeHue,
+    'saturation': kCGBlendModeSaturation,
+    'color': kCGBlendModeColor,
+    'luminosity': kCGBlendModeLuminosity,
 
-BLEND_MODES = """    normal, clear, copy, xor, multiply, screen,
-    overlay, darken, lighten, difference, exclusion,
-    color-dodge, color-burn, soft-light, hard-light,
-    hue, saturation, color, luminosity,
-    source-in, source-out, source-atop, plusdarker, pluslighter
-    destination-over, destination-in, destination-out, destination-atop"""
+    # Porter-Duff compositing modes
+    'sourcein': kCGBlendModeSourceIn,
+    'sourceout': kCGBlendModeSourceOut,
+    'sourceatop': kCGBlendModeSourceAtop,
+    'destinationover': kCGBlendModeDestinationOver,
+    'destinationin': kCGBlendModeDestinationIn,
+    'destinationout': kCGBlendModeDestinationOut,
+    'destinationatop': kCGBlendModeDestinationAtop,
+    'xor': kCGBlendModeXOR,
+    'plusdarker': kCGBlendModePlusDarker,
+    'pluslighter': kCGBlendModePlusLighter,
+}
+
+# Human-readable list of blend modes for error messages
+BLEND_MODES = """Available blend modes:
+    Basic: normal, clear, copy
+    
+    Standard: multiply, screen, overlay, darken, lighten,
+             color-dodge, color-burn, soft-light, hard-light,
+             difference, exclusion
+             
+    Color: hue, saturation, color, luminosity
+    
+    Advanced: source-in, source-out, source-atop,
+             destination-over, destination-in, destination-out, destination-atop,
+             xor, plusdarker, pluslighter"""
 
 
 ### Effects objects ###
