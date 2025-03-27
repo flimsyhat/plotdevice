@@ -110,25 +110,34 @@ class Effect(Frob):
     def __init__(self, *args, **kwargs):
         self._fx = {}
         # Initialize effect settings (ignoring any rollback flag)
+        if kwargs.pop('rollback', False):
+            self._rollback = {eff:getattr(_ctx._effects, eff) for eff in kwargs}
+
         for eff, val in kwargs.items():
-            if eff != 'rollback':
-                self._fx[eff] = self._validate(eff, val)
+            self._fx[eff] = Effect._validate(eff, val)
 
     def __repr__(self):
         return "Effect(%r)" % self._fx
 
     def __enter__(self):
-        # Snapshot current state for the effects being modified
-        self._rollback = {eff: getattr(_ctx._effects, eff, None) for eff in self._fx}
+        # if this isn't the first pass through the context manager, snapshot the current
+        # state for all the effects we're changing so they can be restored in __exit__
+        if not hasattr(self, '_rollback'):
+            self._rollback = {eff:val for eff,val in _ctx._effects._fx.items() if eff in self._fx}
+
+        # concat ourseves as a new canvas container
         _ctx.canvas.push(self)
-        # Remove current global effect settings for the keys we're changing
+
+        # reset the global per-object effects state within the block (since the effects
+        # will be applied to a transparency layer encapsulating all drawing)
         for eff in self._fx:
             _ctx._effects._fx.pop(eff, None)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         _ctx.canvas.pop()
-        # Restore the previous state
+
+        # restore the per-object effects state to what it was before the `with` block
         for eff, val in self._rollback.items():
             setattr(_ctx._effects, eff, val)
         del self._rollback
