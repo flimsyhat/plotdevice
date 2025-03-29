@@ -1055,6 +1055,30 @@ class Context(object):
     def endclip(self):
         """Legacy command. Equivalent to: `with clip():`"""
         self.canvas.pop()
+    
+    def raster(self, *arg):
+        """Enable or disable rasterization for drawing commands.
+        
+        Returns:
+            When called with no arguments, returns the current raster state.
+            When called with True/False, sets the state and returns a context manager.
+            
+        Usage:
+            print(raster())     # query current state
+            raster(True)        # enable rasterization
+            raster(False)       # disable rasterization
+            with raster(True):  # temporarily enable rasterization
+        """
+        if not arg:
+            return self._effects.raster
+
+        enable = arg[0]
+        eff = Effect(raster=enable, rollback=True)
+        
+        if not enable:
+            enable = None
+        self._effects.raster = enable
+        return eff
 
     ### Typography ###
 

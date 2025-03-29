@@ -4,7 +4,7 @@ from ..lib.cocoa import *
 from math import pi, sin, cos, sqrt
 
 from plotdevice import DeviceError
-from . import _cg_context
+from . import _cg_context, _ns_context, _cg_port
 from .atoms import PenMixin, TransformMixin, ColorMixin, EffectsMixin, Grob
 from .colors import Color, Gradient, Pattern
 from .geometry import CENTER, DEGREES, Transform, Region, Point
@@ -386,12 +386,16 @@ class Bezier(EffectsMixin, TransformMixin, ColorMixin, PenMixin, Grob):
         return pathmatics.convert_path(self._to_px(self._nsBezierPath))
 
     def _draw(self):
-        with _cg_context() as port:
+        # TODO: this is a temporary solution to ensure that the context is properly set
+        # since rasterization only works with the NSGraphicsContext for some reason
+        # will work on a unified context in the future
+        with _ns_context() as ctx:
             # modify the context's CTM to reflect our final resting place
             self._screen_transform.concat()
 
             # apply blend/alpha/shadow (and any associated transparency layers)
             with self.effects.applied():
+                port = _cg_port()
                 # prepare to stroke, fill, or both
                 ink = None
                 if isinstance(self._fillcolor, Color):

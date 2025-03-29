@@ -115,9 +115,9 @@ class Grob(object, metaclass=Bequest):
 
 class EffectsMixin(Grob):
     """Mixin class for transparency layer support.
-    Adds the alpha, blend, and shadow properties to the class."""
+    Adds the alpha, blend, shadow, and raster properties to the class."""
     ctxAttrs = ('_effects',)
-    opts = ('alpha','blend','shadow')
+    opts = ('alpha','blend','shadow','raster')
 
     def __init__(self, **kwargs):
         super(EffectsMixin, self).__init__(**kwargs)
@@ -147,6 +147,12 @@ class EffectsMixin(Grob):
     def _set_shadow(self, spec):
         self._effects.shadow = spec
     shadow = property(_get_shadow, _set_shadow)
+    
+    def _get_raster(self):
+        return self._effects.raster
+    def _set_raster(self, enable):
+        self._effects.raster = enable
+    raster = property(_get_raster, _set_raster)
 
 class FrameMixin(Grob):
     """Mixin class for dimensions.

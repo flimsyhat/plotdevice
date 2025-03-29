@@ -11,7 +11,7 @@ from .geometry import Point
 from . import _cg_context, _cg_layer, _cg_port
 
 _ctx = None
-__all__ = ("Effect", "Shadow", "Stencil",)
+__all__ = ("Effect", "Shadow", "Stencil", "Raster")
 
 # Blend modes organized by category
 _BLEND = {
@@ -95,7 +95,7 @@ class Frob(object):
         return self._grobs or []
 
 class Effect(Frob):
-    """Manages graphical effects (blend modes, alpha, and shadows) in the graphics context.
+    """Manages graphical effects (blend modes, alpha, shadows, and rasterization) in the graphics context.
     
     Effects can be used either as a context manager:
         with Effect(blend='multiply', alpha=0.5):
@@ -105,7 +105,7 @@ class Effect(Frob):
         effect = Effect(shadow=(0,10,5))
         effect.append(some_grob)
     """
-    kwargs = ('blend','alpha','shadow')
+    kwargs = ('blend','alpha','shadow','raster')
 
     def __init__(self, *args, **kwargs):
         self._fx = {}
@@ -184,6 +184,18 @@ class Effect(Frob):
             return True
         return False
 
+    def apply_raster(self):
+        """Apply rasterization settings to the current graphics context.
+        
+        Rasterization requires its own image context.
+        Returns True if rasterization was applied.
+        """
+        if 'raster' in self._fx:
+            if self._fx['raster'] is True:
+                raster = Raster()
+                return True
+        return False
+
     @contextmanager
     def applied(self):
         """Apply effects within appropriate transparency layers.
@@ -191,12 +203,14 @@ class Effect(Frob):
         The effects are applied in a specific order and with specific layer requirements:
         - blend/alpha effects are applied together and require their own transparency layer
         - shadow requires its own transparency layer
-        - if only shadow is present, it gets a single layer
+        - raster requires its own image context
+        - if only one type is present, it gets a single layer
         
         Layer structure:
         1. blend/alpha layer (if either effect is present)
             2. shadow layer (if shadow is present)
-                --> drawing occurs here <--
+                3. raster context (if raster is present)
+                    --> drawing occurs here <--
         """
         if not self._fx:
             yield  # no effects to apply
@@ -212,6 +226,9 @@ class Effect(Frob):
             # This ensures the shadow renders correctly with the blend/alpha effects
             if self.apply_shadow():
                 stack.enter_context(_cg_layer())
+            
+            if self.apply_raster():
+                stack.enter_context(Raster().applied())
         
             # All effects are now applied and layers are set up
             # Drawing will occur within the innermost active layer
@@ -227,7 +244,7 @@ class Effect(Frob):
         """Validate and normalize effect values.
         
         Args:
-            eff: Effect type ('blend', 'alpha', or 'shadow')
+            eff: Effect type ('blend', 'alpha', 'shadow', or 'raster')
             val: Value to validate
             
         Returns:
@@ -251,6 +268,8 @@ class Effect(Frob):
                 return val.copy()
             else:
                 return Shadow(*val)
+        elif eff == 'raster':
+            return bool(val)
         return val
 
     @property
@@ -285,6 +304,17 @@ class Effect(Frob):
             self._fx.pop('shadow', None)
         else:
             self._fx['shadow'] = self._validate('shadow', spec)
+
+    @property
+    def raster(self):
+        return self._fx.get('raster', False)
+        
+    @raster.setter
+    def raster(self, enable):
+        if enable is None:
+            self._fx.pop('raster', None)
+        else:
+            self._fx['raster'] = self._validate('raster', enable)
 
 class Shadow(object):
     """Manages shadow effects in the graphics context.
@@ -462,6 +492,74 @@ class Stencil(Frob):
 class ClippingPath(Stencil):
     pass # NodeBox compat...
 
+class Raster(Frob):
+    """Manages rasterization effects in the graphics context.
+    
+    Renders drawing commands into an offscreen image buffer before compositing
+    back into the main graphics context.
+    """
+    def __init__(self):
+        super(Raster, self).__init__()
+        self._cgContext = None
+
+    def __repr__(self):
+        return "Raster()"
+
+    def set(self):
+        """Prepare the raster buffer for drawing.
+        
+        Unlike other effects that modify the current graphics context's state,
+        rasterization requires creating an entirely new bitmap context and
+        redirecting all drawing operations to it. This is why we perform a
+        complete context switch rather than using the _ns_context() manager.
+        """
+        # Create bitmap context with same dimensions as canvas
+        size = (_ctx.WIDTH, _ctx.HEIGHT)
+        colorspace = CGColorSpaceCreateDeviceRGB()
+        opts = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
+        self._cgContext = CGBitmapContextCreate(None, size[0], size[1], 8, size[0] * 4, colorspace, opts)
+        
+        # NOTE: This effect performs a full context switch rather than just state changes.
+        # We need to redirect all drawing to a new bitmap context, which requires
+        # replacing the current NSGraphicsContext entirely.
+        ns_ctx = NSGraphicsContext.graphicsContextWithCGContext_flipped_(self._cgContext, True)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.setCurrentContext_(ns_ctx)
+        
+        # Apply the current transform
+        _ctx._transform.concat()
+
+    def reset(self):
+        """Composite the raster buffer and clean up.
+        
+        After drawing to the offscreen bitmap, we restore the original graphics
+        context and draw the bitmap contents back to it.
+        """
+        if self._cgContext is not None:
+            try:
+                # Restore the original graphics context
+                NSGraphicsContext.restoreGraphicsState()
+                
+                # Create an image from the bitmap context and draw it
+                # to the original context we've now restored
+                cgImage = CGBitmapContextCreateImage(self._cgContext)
+                bounds = ((0, 0), (_ctx.WIDTH, _ctx.HEIGHT))
+                CGContextDrawImage(_cg_port(), bounds, cgImage)
+            finally:
+                self._cgContext = None
+
+    @contextmanager
+    def applied(self):
+        """Apply the raster effect within a context manager block.
+        
+        This follows a try/finally pattern to ensure proper cleanup
+        of graphics resources even if an exception occurs.
+        """
+        try:
+            self.set()
+            yield
+        finally:
+            self.reset()
 
 ### core-image filters for channel separation and inversion ###
 

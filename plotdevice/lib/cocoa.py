@@ -4,9 +4,9 @@ from Quartz import CALayer, CGBitmapContextCreate, CGBitmapContextCreateImage, C
                    CGColorSpaceCreateDeviceCMYK, CGColorSpaceCreateDeviceRGB, CGContextAddPath, CGContextAddRect, \
                    CGContextBeginPath, CGContextBeginTransparencyLayer, CGContextBeginTransparencyLayerWithRect, \
                    CGContextClearRect, CGContextClearRect, CGContextClip, CGContextClipToMask, CGContextDrawPath, \
-                   CGContextEndTransparencyLayer, CGContextEOClip, CGContextRestoreGState, CGContextSaveGState, \
-                   CGContextSetAlpha, CGContextSetBlendMode, CGContextSetFillColorWithColor, CGContextSetLineCap, \
-                   CGContextSetLineDash, CGContextSetLineJoin, CGContextSetLineWidth, \
+                   CGContextDrawImage, CGContextEndTransparencyLayer, CGContextEOClip, CGContextRestoreGState, \
+                   CGContextSaveGState, CGContextSetAlpha, CGContextSetBlendMode, CGContextSetFillColorWithColor, \
+                   CGContextSetLineCap, CGContextSetLineDash, CGContextSetLineJoin, CGContextSetLineWidth, \
                    CGContextSetStrokeColorWithColor, CGDataConsumerCreateWithCFData, CGImageDestinationAddImage, \
                    CGImageDestinationCreateWithData, CGImageDestinationFinalize, CGImageDestinationSetProperties, \
                    CGImageGetBitsPerComponent, CGImageGetBitsPerPixel, CGImageGetBytesPerRow, CGImageGetDataProvider, \
