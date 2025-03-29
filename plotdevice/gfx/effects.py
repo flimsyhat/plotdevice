@@ -485,9 +485,17 @@ class Stencil(Frob):
 
     @contextmanager
     def applied(self):
-        """Apply the stencil effect within a context manager block."""
-        self.set()
-        yield
+        """Apply the stencil effect within a context manager block.
+        
+        Uses try/finally to ensure proper cleanup even if exceptions occur.
+        """
+        try:
+            self.set()
+            yield
+        finally:
+            # Currently no explicit cleanup needed for stencil
+            # but the pattern is in place if needed in the future
+            pass
 
 class ClippingPath(Stencil):
     pass # NodeBox compat...
