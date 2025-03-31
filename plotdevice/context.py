@@ -1845,9 +1845,17 @@ class Canvas(object):
                        "heic": 'public.heic'}
 
             if format in ('jpeg', 'jpg', 'tiff') and cmyk:
+                # NOTE: Use DeviceCMYK only when explicitly requested via cmyk=True.
+                # This provides a CMYK output based on system defaults for print
+                # workflows, preserving CMYK color values where possible. It's
+                # distinct from the default sRGB path used for RGB exports.
                 colorspace, opts = CGColorSpaceCreateDeviceCMYK(), kCGImageAlphaNone
             else:
-                colorspace, opts = CGColorSpaceCreateDeviceRGB(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
+                # NOTE: Use sRGB color space for default bitmap exports (PNG, non-CMYK JPG/TIFF)
+                # instead of DeviceRGB for consistent color rendering across devices and
+                # alignment with web standards. This also matches the internal color
+                # space used by the Raster effect.
+                colorspace, opts = CGColorSpaceCreateWithName(kCGColorSpaceSRGB), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
 
             size = Size(*[int(dim*zoom) for dim in self.pagesize])
             bitmapContext = CGBitmapContextCreate(None, size.width, size.height, 8, size.width * 4, colorspace, opts)

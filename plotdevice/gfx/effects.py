@@ -523,7 +523,10 @@ class Raster(Frob):
         """
         # Create bitmap context with same dimensions as canvas
         size = (_ctx.WIDTH, _ctx.HEIGHT)
-        colorspace = CGColorSpaceCreateDeviceRGB()
+        # NOTE: Use sRGB for the bitmap context to ensure consistent color rendering.
+        # Using deviceRGB previously caused visual inconsistencies (perceived color shifts)
+        # compared to direct vector rendering.
+        colorspace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB)
         opts = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
         self._cgContext = CGBitmapContextCreate(None, size[0], size[1], 8, size[0] * 4, colorspace, opts)
         
