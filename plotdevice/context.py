@@ -1806,6 +1806,7 @@ class Canvas(object):
         trans.concat()
         self.draw()
         img.unlockFocus()
+        img.setFlipped_(True)
         return img
 
     def _render_to_context(self, cgContext, zoom):
