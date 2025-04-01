@@ -1056,28 +1056,44 @@ class Context(object):
         """Legacy command. Equivalent to: `with clip():`"""
         self.canvas.pop()
     
-    def raster(self, *arg):
-        """Enable or disable rasterization for drawing commands.
+    def raster(self, enable=None, zoom=None):
+        """Enable/disable rasterization with optional zoom factor.
+        
+        Args:
+            enable: True/False to enable/disable, or None to return current state
+            zoom: Optional zoom factor (only used when enable is True)
+        
+        Examples:
+            raster()         # Get current state
+            raster(True)     # Enable with default zoom (1.0)
+            raster(False)    # Disable rasterization
+            raster(True, 2)  # Enable with 2x zoom
+            raster(zoom=0.5) # Enable with 0.5x zoom
         
         Returns:
-            When called with no arguments, returns the current raster state.
-            When called with True/False, sets the state and returns a context manager.
-            
-        Usage:
-            print(raster())     # query current state
-            raster(True)        # enable rasterization
-            raster(False)       # disable rasterization
-            with raster(True):  # temporarily enable rasterization
+            Current raster settings when called with no args or 
+            an Effect context manager when called with arguments
         """
-        if not arg:
+        if enable is None and zoom is None:
             return self._effects.raster
-
-        enable = arg[0]
-        eff = Effect(raster=enable, rollback=True)
         
-        if not enable:
-            enable = None
-        self._effects.raster = enable
+        if enable is None and zoom is not None:
+            # If only zoom is provided, enable raster with that zoom
+            enable = True
+        
+        if zoom is not None:
+            # Using the (enable, zoom) form
+            val = (enable, zoom)
+        else:
+            # Just using enable/disable
+            val = enable
+        
+        # Create an Effect object with rollback capability for use in with statements
+        eff = Effect(raster=val, rollback=True)
+        
+        # Update the current effects state
+        self._effects.raster = val
+        
         return eff
 
     ### Typography ###
@@ -1819,8 +1835,16 @@ class Canvas(object):
             raise
 
     def _render_to_context(self, cgContext, zoom):
-        """Renders the canvas content into a provided Core Graphics context."""
+        """Renders the canvas content into a provided Core Graphics context.
+        
+        Args:
+            cgContext: The Core Graphics context to render into
+            zoom: Export zoom factor to apply
+        """
         try:
+            # Store export zoom factor in the context for raster effects to access
+            self._export_zoom = zoom
+            
             ns_ctx = NSGraphicsContext.graphicsContextWithCGContext_flipped_(cgContext, True)
             if ns_ctx is None:
                 raise DeviceError("Failed to create NSGraphicsContext for export")
@@ -1850,6 +1874,9 @@ class Canvas(object):
             finally:
                 # Always restore the original context
                 NSGraphicsContext.restoreGraphicsState()
+                
+                # Clear the export zoom factor
+                self._export_zoom = None
         except Exception:
             raise
 

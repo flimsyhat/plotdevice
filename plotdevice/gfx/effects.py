@@ -185,14 +185,17 @@ class Effect(Frob):
         return False
 
     def apply_raster(self):
-        """Apply rasterization settings to the current graphics context.
+        """Check if the raster effect should be applied.
         
-        Rasterization requires its own image context.
-        Returns True if rasterization was applied.
+        Unlike other apply_* methods, this doesn't perform the setup itself.
+        Raster requires replacing the graphics context, which is managed via
+        a dedicated context manager within the Effect.applied() method.
+        Returns True if rasterization is enabled.
         """
         if 'raster' in self._fx:
-            if self._fx['raster'] is True:
-                raster = Raster()
+            raster_params = self._fx['raster']
+            if raster_params and raster_params.get('enable', False):
+                # Just indicate that raster should be applied
                 return True
         return False
 
@@ -227,11 +230,17 @@ class Effect(Frob):
             if self.apply_shadow():
                 stack.enter_context(_cg_layer())
             
-            if self.apply_raster():
-                stack.enter_context(Raster().applied())
-        
-            # All effects are now applied and layers are set up
-            # Drawing will occur within the innermost active layer
+            # Handle raster context
+            if self.apply_raster(): # Check if raster is enabled
+                # Retrieve zoom params
+                zoom = 1.0
+                if 'raster' in self._fx and self._fx['raster']:
+                    zoom = self._fx['raster'].get('zoom', 1.0)
+                # Create the Raster object and push its context manager onto the stack.
+                # The Raster.applied() context manager handles the actual context switch.
+                stack.enter_context(Raster(zoom=zoom).applied())
+            
+            # Yield to allow drawing within the configured context/layers
             yield
 
     def copy(self):
@@ -241,18 +250,7 @@ class Effect(Frob):
 
     @classmethod
     def _validate(cls, eff, val):
-        """Validate and normalize effect values.
-        
-        Args:
-            eff: Effect type ('blend', 'alpha', 'shadow', or 'raster')
-            val: Value to validate
-            
-        Returns:
-            Normalized value if valid
-            
-        Raises:
-            DeviceError: If value is invalid for the effect type
-        """
+        """Validate and normalize effect values."""
         if val is None:
             return None
         elif eff == 'alpha':
@@ -269,7 +267,34 @@ class Effect(Frob):
             else:
                 return Shadow(*val)
         elif eff == 'raster':
-            return bool(val)
+            # Handle tuple from the new API form (enable, zoom)
+            if isinstance(val, tuple) and len(val) == 2:
+                enable, zoom = val
+                if enable is True:
+                    if not (numlike(zoom) and zoom > 0):
+                        raise DeviceError(f"raster() zoom value must be a positive number")
+                    return dict(enable=True, zoom=zoom)
+                else:
+                    return dict(enable=False)
+            
+            # Handle dictionary format (unchanged)
+            elif isinstance(val, dict):
+                if 'zoom' in val:
+                    zoom_val = val['zoom']
+                    if not (numlike(zoom_val) and zoom_val > 0):
+                        raise DeviceError(f"raster() zoom value must be a positive number")
+                val.setdefault('enable', True) 
+                return val
+            
+            # Handle boolean enable (unchanged)
+            elif val is True:
+                return dict(enable=True, zoom=1.0)
+            elif val is False:
+                return dict(enable=False)
+            
+            # Handle other cases
+            else:
+                raise DeviceError("raster() argument must be True, False, a dict with 'enable'/'zoom' keys, or (enable, zoom)")
         return val
 
     @property
@@ -506,12 +531,13 @@ class Raster(Frob):
     Renders drawing commands into an offscreen image buffer before compositing
     back into the main graphics context.
     """
-    def __init__(self):
+    def __init__(self, zoom=1.0):
         super(Raster, self).__init__()
         self._cgContext = None
+        self._zoom = zoom
 
     def __repr__(self):
-        return "Raster()"
+        return f"Raster(zoom={self._zoom})"
 
     def set(self):
         """Prepare the raster buffer for drawing.
@@ -523,12 +549,25 @@ class Raster(Frob):
         """
         # Create bitmap context with same dimensions as canvas
         size = (_ctx.WIDTH, _ctx.HEIGHT)
+        
+        # Calculate target dimensions using the zoom value
+        width = int(size[0] * self._zoom)
+        height = int(size[1] * self._zoom)
+        
+        # Check if calculated dimensions are valid (>= 1x1)
+        if width < 1 or height < 1:
+            # Explicitly cast dimensions to float for calculation
+            min_zoom_req = max(1.0 / float(size[0]), 1.0 / float(size[1]))
+            raise DeviceError(f"Raster effect zoom ({self._zoom}) results in invalid bitmap dimensions ({width}x{height}) for canvas size ({size[0]}x{size[1]}). Minimum zoom required: {min_zoom_req:.4f}")
+        
         # NOTE: Use sRGB for the bitmap context to ensure consistent color rendering.
         # Using deviceRGB previously caused visual inconsistencies (perceived color shifts)
         # compared to direct vector rendering.
         colorspace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB)
         opts = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
-        self._cgContext = CGBitmapContextCreate(None, size[0], size[1], 8, size[0] * 4, colorspace, opts)
+        
+        # Create the bitmap context with the zoomed dimensions
+        self._cgContext = CGBitmapContextCreate(None, width, height, 8, width * 4, colorspace, opts)
         
         # NOTE: This effect performs a full context switch rather than just state changes.
         # We need to redirect all drawing to a new bitmap context, which requires
@@ -537,7 +576,10 @@ class Raster(Frob):
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.setCurrentContext_(ns_ctx)
         
-        # Apply the current transform
+        # Apply zoom transformation along with the current transform
+        trans = NSAffineTransform.transform()
+        trans.scaleXBy_yBy_(self._zoom, self._zoom)
+        trans.concat()
         _ctx._transform.concat()
 
     def reset(self):
