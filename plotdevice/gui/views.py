@@ -9,6 +9,7 @@ from . import set_timeout
 from ..lib.cocoa import *
 from ..gfx import Color
 from ..gfx.atoms import KEY_ESC
+from .. import DeviceError
 from objc import super
 
 class GraphicsBackdrop(NSView):
@@ -345,13 +346,13 @@ class GraphicsView(NSView):
                 placeholder.drawInRect_(self.bounds())
             return
 
+        # Set up the graphics state for zoomed drawing 
+        NSGraphicsContext.currentContext().saveGraphicsState()
+        
         # Convert the dirty rect to canvas coordinates
         viewToCanvas = NSAffineTransform.transform()
         viewToCanvas.scaleBy_(1.0/self.zoom)
         canvasRect = viewToCanvas.transformRect_(rect)
-        
-        # Set up the graphics state for zoomed drawing
-        NSGraphicsContext.currentContext().saveGraphicsState()
         
         # Apply zoom transform
         transform = NSAffineTransform.transform()
@@ -364,11 +365,19 @@ class GraphicsView(NSView):
         clip = NSBezierPath.bezierPathWithRect_(visibleBounds)
         clip.addClip()
         
-        # Draw the canvas contents
-        self.canvas.draw()
-        
-        # Restore the graphics state
-        NSGraphicsContext.currentContext().restoreGraphicsState()
+        try:
+            # Draw the canvas contents
+            self.canvas.draw()
+        except DeviceError as e:
+            # Handle DeviceError gracefully
+            print(f"PlotDevice Error during canvas drawing: {e}")
+        except Exception as e:
+            # Catch other unexpected errors
+            print(f"Unexpected error during canvas drawing: {e}")
+            traceback.print_exc() # Using imported traceback module
+        finally:
+            # Restore the graphics state 
+            NSGraphicsContext.currentContext().restoreGraphicsState()
 
 class FullscreenWindow(NSWindow):
 
