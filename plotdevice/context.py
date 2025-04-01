@@ -1798,29 +1798,60 @@ class Canvas(object):
         return self._render_to_image()
 
     def _render_to_image(self, zoom=1.0):
-        size = Size(*[int(dim*zoom) for dim in self.pagesize])
-        img = NSImage.alloc().initWithSize_(size)
-        img.lockFocusFlipped_(True)
-        trans = NSAffineTransform.transform()
-        trans.scaleXBy_yBy_(zoom,zoom)
-        trans.concat()
-        self.draw()
-        img.unlockFocus()
-        img.setFlipped_(True)
-        return img
+        """Create an NSImage containing the canvas contents."""
+        try:
+            size = Size(*[int(dim*zoom) for dim in self.pagesize])
+            img = NSImage.alloc().initWithSize_(size)
+            
+            img.lockFocusFlipped_(True)
+            try:
+                trans = NSAffineTransform.transform()
+                trans.scaleXBy_yBy_(zoom,zoom)
+                trans.concat()
+                self.draw()
+            finally:
+                img.unlockFocus()
+                
+            # Mark the NSImage as having flipped orientation to prevent upside-down rendering
+            img.setFlipped_(True)
+            return img
+        except Exception:
+            raise
 
     def _render_to_context(self, cgContext, zoom):
-        ns_ctx = NSGraphicsContext.graphicsContextWithCGContext_flipped_(cgContext, True)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.setCurrentContext_(ns_ctx)
-        NSGraphicsContext.saveGraphicsState()
-        trans = NSAffineTransform.transform()
-        trans.translateXBy_yBy_(0, self.pagesize.height*zoom)
-        trans.scaleXBy_yBy_(zoom,-zoom)
-        trans.concat()
-        self.draw()
-        NSGraphicsContext.restoreGraphicsState()
-        NSGraphicsContext.restoreGraphicsState()
+        """Renders the canvas content into a provided Core Graphics context."""
+        try:
+            ns_ctx = NSGraphicsContext.graphicsContextWithCGContext_flipped_(cgContext, True)
+            if ns_ctx is None:
+                raise DeviceError("Failed to create NSGraphicsContext for export")
+                
+            # Save the original graphics state
+            NSGraphicsContext.saveGraphicsState()
+            
+            try:
+                # Set the temporary context for export
+                NSGraphicsContext.setCurrentContext_(ns_ctx)
+                
+                # Save state within the temporary context
+                NSGraphicsContext.saveGraphicsState()
+                
+                try:
+                    # Apply transformations
+                    trans = NSAffineTransform.transform()
+                    trans.translateXBy_yBy_(0, self.pagesize.height*zoom)
+                    trans.scaleXBy_yBy_(zoom,-zoom)
+                    trans.concat()
+                    
+                    # Draw the canvas content
+                    self.draw()
+                finally:
+                    # Always restore the temporary context's state
+                    NSGraphicsContext.restoreGraphicsState()
+            finally:
+                # Always restore the original context
+                NSGraphicsContext.restoreGraphicsState()
+        except Exception:
+            raise
 
     def _getImageData(self, format, zoom=1.0, cmyk=False):
         if format == 'pdf':
@@ -1859,17 +1890,37 @@ class Canvas(object):
                 colorspace, opts = CGColorSpaceCreateWithName(kCGColorSpaceSRGB), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
 
             size = Size(*[int(dim*zoom) for dim in self.pagesize])
-            bitmapContext = CGBitmapContextCreate(None, size.width, size.height, 8, size.width * 4, colorspace, opts)
-            self._render_to_context(bitmapContext, zoom)
-            cgImage = CGBitmapContextCreateImage(bitmapContext)
-            cgData = NSMutableData.data()
-            cgDest = CGImageDestinationCreateWithData(cgData, cgTypes[format], 1, None)
-            cgProperies = {kCGImagePropertyDPIWidth: 72*zoom, kCGImagePropertyDPIHeight: 72*zoom}
-            if format in ('jpg', 'jpeg'):
-                cgProperies[kCGImageDestinationLossyCompressionQuality] = 1.0
-            CGImageDestinationAddImage(cgDest, cgImage, cgProperies)
-            CGImageDestinationFinalize(cgDest)
-            return cgData
+            
+            try:
+                # Create the bitmap context
+                bitmapContext = CGBitmapContextCreate(None, size.width, size.height, 8, size.width * 4, colorspace, opts)
+                if bitmapContext is None:
+                    raise DeviceError("Failed to create bitmap context for export")
+                    
+                self._render_to_context(bitmapContext, zoom)
+                
+                # Create image from bitmap
+                cgImage = CGBitmapContextCreateImage(bitmapContext)
+                if cgImage is None:
+                    raise DeviceError("Failed to create image from bitmap context")
+                    
+                # Create the data container for the export
+                cgData = NSMutableData.data()
+                cgDest = CGImageDestinationCreateWithData(cgData, cgTypes[format], 1, None)
+                if cgDest is None:
+                    raise DeviceError("Failed to create image destination")
+                    
+                # Configure properties and add the image
+                cgProperies = {kCGImagePropertyDPIWidth: 72*zoom, kCGImagePropertyDPIHeight: 72*zoom}
+                if format in ('jpg', 'jpeg'):
+                    cgProperies[kCGImageDestinationLossyCompressionQuality] = 1.0
+                    
+                CGImageDestinationAddImage(cgDest, cgImage, cgProperies)
+                CGImageDestinationFinalize(cgDest)
+                
+                return cgData
+            except Exception:
+                raise
 
     def save(self, fname, format=None, zoom=1.0, cmyk=False):
         """Write the current graphics objects to an image file"""
